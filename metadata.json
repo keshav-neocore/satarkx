@@ -1,0 +1,9 @@
+{
+  "name": "SatarkX",
+  "description": "A gamified, friendly, and vibrant mobile login interface with seamless animations and high-fidelity UI.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ]
+}
