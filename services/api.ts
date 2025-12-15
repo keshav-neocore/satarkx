@@ -46,6 +46,23 @@ export interface Report {
   status: 'Pending' | 'Verified';
 }
 
+// Backend Feed Schema Matching
+export interface FeedItemData {
+  id: string;
+  type: 'news' | 'official' | 'reel' | 'ad';
+  author: string;
+  avatar: string;
+  content: string;
+  image?: string;
+  videoUrl?: string;
+  timestamp: string;
+  rawTimestamp: number; // For sorting
+  verified: boolean;
+  likes?: number;
+  severity?: 'CRITICAL' | 'MODERATE' | 'LOW'; // Backend field
+  isGlobalAlert?: boolean; // Backend field
+}
+
 // Mock Data
 let MOCK_POINTS = 0;
 const MOCK_REPORTS: Report[] = [];
@@ -135,4 +152,112 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
   MOCK_REPORTS.unshift(newReport);
 
   return { success: true, points_added: points };
+};
+
+// --- NEW FEED ALGORITHM SIMULATION ---
+
+export const fetchLivePulseFeed = async (lat: number, lng: number): Promise<FeedItemData[]> => {
+  await new Promise(resolve => setTimeout(resolve, 1200)); // Simulate DB latency
+
+  // 1. Raw Data Pool (Simulating DB Collection)
+  const RAW_DB: FeedItemData[] = [
+    {
+      id: 'alert-1',
+      type: 'official', // Mapped from JUDICIARY
+      severity: 'CRITICAL',
+      isGlobalAlert: true,
+      author: 'District Magistrate',
+      avatar: 'https://ui-avatars.com/api/?name=DM&background=0f172a&color=fff',
+      content: 'CRITICAL: Heavy rainfall warning issued for New Delhi District. All schools closed tomorrow.',
+      timestamp: '1h ago',
+      rawTimestamp: Date.now() - 3600000,
+      verified: true,
+    },
+    {
+      id: 'news-1',
+      type: 'news',
+      author: 'City Safety Watch',
+      avatar: 'https://ui-avatars.com/api/?name=Safety+Watch&background=ef4444&color=fff',
+      verified: true,
+      timestamp: '10m ago',
+      rawTimestamp: Date.now() - 600000,
+      content: 'Traffic congestion reported on MG Road due to ongoing metro construction.',
+      image: 'https://images.unsplash.com/photo-1566809835848-18e806e57a44?auto=format&fit=crop&q=80&w=800',
+      likes: 124
+    },
+    {
+      id: 'reel-1',
+      type: 'reel',
+      author: 'Rohan_Citizen',
+      avatar: 'https://avatar.iran.liara.run/public/boy?username=Rohan',
+      videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-traffic-on-a-city-street-at-night-4261-large.mp4',
+      content: 'Water logging starting near the bridge. Avoid this area guys! 🌧️ #RainUpdate',
+      timestamp: '2h ago',
+      rawTimestamp: Date.now() - 7200000,
+      verified: false,
+    },
+    {
+      id: 'ad-1',
+      type: 'ad',
+      author: 'SecureLife Insurance',
+      avatar: 'https://ui-avatars.com/api/?name=SL&background=22c55e&color=fff',
+      content: 'Protect your family from unexpected events. Get covered today.',
+      image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=800',
+      timestamp: 'Just now',
+      rawTimestamp: Date.now(),
+      verified: true,
+    },
+    {
+      id: 'news-2',
+      type: 'news',
+      author: 'Local News 24',
+      avatar: 'https://ui-avatars.com/api/?name=Local+News&background=f59e0b&color=fff',
+      verified: true,
+      timestamp: '30m ago',
+      rawTimestamp: Date.now() - 1800000,
+      content: 'Community cleanliness drive scheduled for this Sunday at Central Park.',
+      likes: 89
+    },
+    {
+       id: 'reel-2',
+       type: 'reel',
+       author: 'Priya_Reporter',
+       avatar: 'https://avatar.iran.liara.run/public/girl?username=Priya',
+       videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-rain-falling-on-the-water-of-a-lake-4500-large.mp4',
+       content: 'View from Sector 12. Roads are clear now. ✅',
+       timestamp: '4h ago',
+       rawTimestamp: Date.now() - 14400000,
+       verified: true,
+    }
+  ];
+
+  // 2. The "Pulse" Algorithm Implementation
+  
+  // Filter Organic vs Ads
+  const ads = RAW_DB.filter(i => i.type === 'ad');
+  const organic = RAW_DB.filter(i => i.type !== 'ad');
+
+  // Sort Organic by Weighted Score
+  organic.sort((a, b) => {
+    const getScore = (item: FeedItemData) => {
+      let score = 0;
+      // Priority 1: Critical Global Alerts
+      if (item.severity === 'CRITICAL') return 1000;
+      // Priority 2: Official Updates
+      if (item.type === 'official') return 500;
+      // Priority 3: Time Decay (Newer is better)
+      score += item.rawTimestamp / 10000000000; 
+      // Bonus for Video/Reels
+      if (item.type === 'reel') score += 10;
+      return score;
+    };
+    return getScore(b) - getScore(a);
+  });
+
+  // 3. Ad Injection (Mocking 1:7 ratio, here just inserting at index 3 for demo)
+  if (ads.length > 0 && organic.length >= 3) {
+      organic.splice(3, 0, ads[0]);
+  }
+
+  return organic;
 };

@@ -4,6 +4,7 @@ import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, C
 import MapComponent from './MapComponent';
 import CameraModal from './CameraModal';
 import ProfileScreen from './ProfileScreen';
+import FeedScreen from './FeedScreen';
 import { fetchUserProfile, fetchHazards, submitReport, fetchUserReports, UserProfile, Hazard, Report } from '../services/api';
 
 const HomeScreen: React.FC = () => {
@@ -157,12 +158,9 @@ const HomeScreen: React.FC = () => {
             />
         )}
         
-        {/* Placeholder for other tabs */}
+        {/* Feed Tab */}
         {activeTab === 'Feed' && (
-             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
-                <List size={48} className="mb-2 opacity-20" />
-                <p>Coming Soon</p>
-             </div>
+             <FeedScreen />
         )}
       </div>
 
