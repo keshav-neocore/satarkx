@@ -5,13 +5,27 @@ export interface LoginResponse {
   [key: string]: any;
 }
 
+export interface UserPreferences {
+  theme: 'light' | 'dark';
+  mapStyle: 'simple' | 'satellite';
+}
+
 export interface UserProfile {
   name: string;
+  email: string;
+  mobile?: string;
   level: string;
   levelNumber: number;
   currentPoints: number;
   maxPoints: number;
-  avatarUrl?: string;
+  avatarUrl?: string; // Final resolved URL for display
+  
+  // New Avatar Fields
+  avatarType: 'upload' | 'preset';
+  gender: 'boy' | 'girl';
+  presetId: string; // Seed for the preset API
+
+  preferences: UserPreferences;
 }
 
 export interface Hazard {
@@ -36,22 +50,47 @@ export interface Report {
 let MOCK_POINTS = 0;
 const MOCK_REPORTS: Report[] = [];
 
+// In-memory user store for the session
+let MOCK_USER: UserProfile = {
+  name: 'Explorer',
+  email: 'explorer@satarkx.in',
+  mobile: '',
+  level: 'Eco-Novice',
+  levelNumber: 1,
+  currentPoints: MOCK_POINTS,
+  maxPoints: 100,
+  avatarUrl: 'https://avatar.iran.liara.run/public/boy?username=Felix',
+  avatarType: 'preset',
+  gender: 'boy',
+  presetId: 'Felix',
+  preferences: {
+    theme: 'light',
+    mapStyle: 'satellite'
+  }
+};
+
 export const loginUser = async (username: string, email: string): Promise<LoginResponse> => {
   await new Promise(resolve => setTimeout(resolve, 1500));
-  // Mock success
+  // Update mock user with login details
+  MOCK_USER.name = username;
+  MOCK_USER.email = email;
   return { id: 123, username, email };
 };
 
 export const fetchUserProfile = async (): Promise<UserProfile> => {
-  // Simulate API call
-  return {
-    name: 'Explorer',
-    level: 'Eco-Novice',
-    levelNumber: 1,
-    currentPoints: MOCK_POINTS,
-    maxPoints: 100,
-    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'
-  };
+  // Return current state of mock user
+  MOCK_USER.currentPoints = MOCK_POINTS;
+  return { ...MOCK_USER };
+};
+
+export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<UserProfile> => {
+  await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network
+  MOCK_USER = { ...MOCK_USER, ...updates };
+  // Recalculate avatar URL if presets changed
+  if (MOCK_USER.avatarType === 'preset') {
+    MOCK_USER.avatarUrl = `https://avatar.iran.liara.run/public/${MOCK_USER.gender}?username=${MOCK_USER.presetId}`;
+  }
+  return { ...MOCK_USER };
 };
 
 export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> => {

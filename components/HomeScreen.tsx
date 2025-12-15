@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, CheckCircle } from 'lucide-react';
 import MapComponent from './MapComponent';
 import CameraModal from './CameraModal';
+import ProfileScreen from './ProfileScreen';
 import { fetchUserProfile, fetchHazards, submitReport, fetchUserReports, UserProfile, Hazard, Report } from '../services/api';
 
 const HomeScreen: React.FC = () => {
@@ -77,26 +78,29 @@ const HomeScreen: React.FC = () => {
     );
   }
 
-  const progressPercent = (user.currentPoints / user.maxPoints) * 100;
+  // Use preference from user object or default
+  const mapStyle = user.preferences.mapStyle; 
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-gray-100 font-sans">
+    <div className={`relative w-full h-full overflow-hidden font-sans ${user.preferences.theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-gray-100'}`}>
       
-      {/* 1. Main Content Area (Map or Reports List) */}
-      <div className="absolute inset-0 z-0 bg-mint-50 pb-20 overflow-y-auto">
+      {/* 1. Main Content Area */}
+      <div className={`absolute inset-0 z-0 pb-20 overflow-y-auto ${user.preferences.theme === 'dark' ? 'bg-slate-900' : 'bg-mint-50'}`}>
+        
         {activeTab === 'Map' && (
              <div className="w-full h-full">
                 <MapComponent 
                     latitude={currentLocation.lat} 
                     longitude={currentLocation.lng} 
-                    hazards={hazards} 
+                    hazards={hazards}
+                    mapStyle={mapStyle}
                 />
              </div>
         )}
 
         {activeTab === 'Reports' && (
-            <div className="pt-24 px-4 pb-20 min-h-full">
-                <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <div className="pt-6 px-4 pb-20 min-h-full">
+                <h2 className={`text-2xl font-bold mb-6 flex items-center gap-2 ${user.preferences.theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
                     <FileText className="text-mint-600" /> My Reports
                 </h2>
                 
@@ -108,8 +112,8 @@ const HomeScreen: React.FC = () => {
                 ) : (
                     <div className="grid grid-cols-1 gap-4">
                         {myReports.map((report) => (
-                            <div key={report.id} className="bg-white rounded-xl shadow-sm overflow-hidden border border-mint-100">
-                                <div className="relative h-48 bg-gray-100">
+                            <div key={report.id} className={`${user.preferences.theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100'} rounded-xl shadow-sm overflow-hidden border`}>
+                                <div className="relative h-48 bg-gray-900">
                                     {report.type === 'video' ? (
                                         <video src={report.url} controls className="w-full h-full object-cover" />
                                     ) : (
@@ -125,7 +129,7 @@ const HomeScreen: React.FC = () => {
                                             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">
                                                 {report.timestamp.toLocaleDateString()} • {report.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                             </p>
-                                            <p className="font-bold text-slate-700 text-sm">
+                                            <p className={`font-bold text-sm ${user.preferences.theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>
                                                 Location: {report.location.lat.toFixed(4)}, {report.location.lng.toFixed(4)}
                                             </p>
                                         </div>
@@ -145,9 +149,16 @@ const HomeScreen: React.FC = () => {
                 )}
             </div>
         )}
+
+        {activeTab === 'Profile' && (
+            <ProfileScreen 
+                user={user} 
+                onUpdate={(updatedUser) => setUser(updatedUser)} 
+            />
+        )}
         
         {/* Placeholder for other tabs */}
-        {(activeTab === 'Feed' || activeTab === 'Profile') && (
+        {activeTab === 'Feed' && (
              <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
                 <List size={48} className="mb-2 opacity-20" />
                 <p>Coming Soon</p>
@@ -155,36 +166,9 @@ const HomeScreen: React.FC = () => {
         )}
       </div>
 
-      {/* 2. Floating Header Card (Always visible) */}
-      <motion.div 
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        className="absolute top-4 left-4 right-4 bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg p-4 z-20 flex items-center gap-4"
-      >
-        <div className="w-12 h-12 rounded-full bg-mint-100 overflow-hidden border-2 border-mint-500">
-           <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-        </div>
-        <div className="flex-1">
-          <div className="flex justify-between items-center mb-1">
-             <h2 className="text-sm font-bold text-slate-800">Level {user.levelNumber} {user.level}</h2>
-             <span className="text-xs font-bold text-mint-600">{user.currentPoints}/{user.maxPoints} pts</span>
-          </div>
-          {/* Progress Bar */}
-          <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-             <motion.div 
-               initial={{ width: 0 }}
-               animate={{ width: `${progressPercent}%` }}
-               transition={{ duration: 1.5, ease: "easeOut" }}
-               className="h-full bg-gradient-to-r from-mint-400 to-mint-600 rounded-full"
-             />
-          </div>
-          <p className="text-[10px] text-slate-500 mt-1">
-            {user.maxPoints - user.currentPoints} EcoPoints to next tier.
-          </p>
-        </div>
-      </motion.div>
+      {/* Floating Header Card Removed */}
 
-      {/* 3. Floating Action Button (FAB) - Hidden on Reports tab for cleaner view? No, keep it. */}
+      {/* 3. Floating Action Button (FAB) */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={() => setShowCamera(true)}
@@ -199,7 +183,7 @@ const HomeScreen: React.FC = () => {
       </motion.button>
 
       {/* 4. Bottom Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 bg-white shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-20 pb-safe pt-2">
+      <div className={`absolute bottom-0 left-0 right-0 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-20 pb-safe pt-2 ${user.preferences.theme === 'dark' ? 'bg-slate-800 border-t border-slate-700' : 'bg-white'}`}>
          <div className="flex justify-around items-end pb-4">
             <NavIcon icon={MapIcon} label="Map" active={activeTab === 'Map'} onClick={() => setActiveTab('Map')} />
             <NavIcon icon={List} label="Feed" active={activeTab === 'Feed'} onClick={() => setActiveTab('Feed')} />

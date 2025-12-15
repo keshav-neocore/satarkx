@@ -8,25 +8,22 @@ interface MapComponentProps {
   latitude: number;
   longitude: number;
   hazards: Hazard[];
+  mapStyle: 'simple' | 'satellite';
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazards }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazards, mapStyle }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
 
+  // Initialize Map
   useEffect(() => {
     if (mapContainer.current && !mapInstance.current) {
-      // Initialize Map
       mapInstance.current = L.map(mapContainer.current, {
         zoomControl: false,
         attributionControl: false,
       }).setView([latitude, longitude], 16);
-
-      // Add OpenStreetMap Tile Layer
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-      }).addTo(mapInstance.current);
 
       // Add User Location Marker (Blue Pulse)
       const userIcon = L.divIcon({
@@ -38,7 +35,38 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
       
       L.marker([latitude, longitude], { icon: userIcon }).addTo(mapInstance.current);
     }
-  }, []); // Run once on mount
+  }, []); 
+
+  // Handle Tile Layer Switching
+  useEffect(() => {
+    if (!mapInstance.current) return;
+
+    // Clear previous layers
+    if (layerRef.current) {
+      layerRef.current.clearLayers();
+    } else {
+      layerRef.current = L.layerGroup().addTo(mapInstance.current);
+    }
+
+    if (mapStyle === 'satellite') {
+      // 1. Satellite Base (Esri)
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+      }).addTo(layerRef.current);
+
+      // 2. Labels Overlay
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+      }).addTo(layerRef.current);
+    } else {
+      // Simple View (CartoDB Positron - Light & Clean)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(layerRef.current);
+    }
+
+  }, [mapStyle]);
 
   // Update View when location changes
   useEffect(() => {
@@ -78,7 +106,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
     });
   }, [hazards]);
 
-  return <div ref={mapContainer} className="w-full h-full z-0" />;
+  return <div ref={mapContainer} className="w-full h-full z-0 bg-gray-200" />;
 };
 
 export default MapComponent;
