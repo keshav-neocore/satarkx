@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink, AlertCircle } from 'lucide-react';
 import { FeedItemData } from '../services/api';
 
 const FeedItem: React.FC<{ item: FeedItemData }> = ({ item }) => {
@@ -75,11 +75,12 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry.isIntersecting && !hasError) {
           videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
         } else {
           videoRef.current?.pause();
@@ -91,10 +92,10 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
 
     if (videoRef.current) observer.observe(videoRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [hasError]);
 
   const togglePlay = () => {
-    if (videoRef.current) {
+    if (videoRef.current && !hasError) {
       if (isPlaying) {
         videoRef.current.pause();
         setIsPlaying(false);
@@ -104,6 +105,26 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
       }
     }
   };
+
+  if (hasError) {
+    return (
+        <div className="relative rounded-3xl overflow-hidden aspect-[9/16] mb-5 bg-slate-900 shadow-lg border border-gray-100 flex flex-col items-center justify-center p-6 text-center">
+            <AlertCircle size={40} className="text-slate-600 mb-2" />
+            <p className="text-slate-400 font-bold text-sm">Video Unavailable</p>
+            <p className="text-slate-600 text-xs mt-1">The source content could not be loaded.</p>
+            
+            <div className="absolute bottom-0 left-0 right-0 p-5 text-white bg-black/50 backdrop-blur-sm">
+                <div className="flex items-center gap-2 mb-2">
+                    <img src={item.avatar} className="w-9 h-9 rounded-full border-2 border-white/50" />
+                    <div className="flex flex-col text-left">
+                        <span className="font-bold text-sm text-white drop-shadow-md">{item.author}</span>
+                        <span className="text-[10px] bg-red-500/50 px-1.5 py-0.5 rounded font-bold uppercase inline-block w-fit">Error</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="relative rounded-3xl overflow-hidden aspect-[9/16] mb-5 bg-black shadow-lg shadow-slate-200 border border-gray-100">
@@ -115,6 +136,10 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
          muted={isMuted}
          playsInline
          onClick={togglePlay}
+         onError={(e) => {
+             console.error("Video load error", e);
+             setHasError(true);
+         }}
        />
        {/* Overlays */}
        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none"></div>

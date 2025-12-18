@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, X, Check, Dices, Sparkles, ChevronRight } from 'lucide-react';
-import { UserProfile, updateUserProfile } from '../services/api';
+import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy } from 'lucide-react';
+import { UserProfile, updateUserProfile, BADGES } from '../services/api';
 import CameraModal from './CameraModal';
 
 interface ProfileScreenProps {
@@ -10,370 +10,158 @@ interface ProfileScreenProps {
 }
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
-  // Form State
-  const [formData, setFormData] = useState({
-    name: user.name,
-    email: user.email,
-    mobile: user.mobile || '',
-  });
-
-  // Preferences State
+  const [formData, setFormData] = useState({ name: user.name, email: user.email, mobile: user.mobile || '' });
   const [theme, setTheme] = useState<'light' | 'dark'>(user.preferences.theme);
   const [mapStyle, setMapStyle] = useState<'simple' | 'satellite'>(user.preferences.mapStyle);
-  
-  // Avatar State
   const [avatarType, setAvatarType] = useState<'upload' | 'preset'>(user.avatarType);
   const [gender, setGender] = useState<'boy' | 'girl'>(user.gender);
   const [presetId, setPresetId] = useState<string>(user.presetId);
   const [customAvatarUrl, setCustomAvatarUrl] = useState<string | undefined>(user.avatarType === 'upload' ? user.avatarUrl : undefined);
-
-  // UI State
   const [isSaving, setIsSaving] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Constants for Presets
-  const PRESET_SEEDS = ['Felix', 'Aneka', 'Mark', 'Jocelyn', 'George', 'Maria', 'Christopher', 'Sophia', 'Ryker', 'Zoe'];
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Determine final avatar URL
-      let finalAvatarUrl = customAvatarUrl;
-      if (avatarType === 'preset') {
-        finalAvatarUrl = `https://avatar.iran.liara.run/public/${gender}?username=${presetId}`;
-      }
-
+      let finalAvatarUrl = avatarType === 'preset' ? `https://avatar.iran.liara.run/public/${gender}?username=${presetId}` : customAvatarUrl;
       const updatedProfile = await updateUserProfile({
-        name: formData.name,
-        email: formData.email,
-        mobile: formData.mobile,
-        avatarType,
-        gender,
-        presetId,
-        avatarUrl: finalAvatarUrl,
-        preferences: {
-          theme,
-          mapStyle
-        }
+        name: formData.name, email: formData.email, mobile: formData.mobile,
+        avatarType, gender, presetId, avatarUrl: finalAvatarUrl,
+        preferences: { theme, mapStyle }
       });
       onUpdate(updatedProfile);
-    } catch (error) {
-      console.error("Failed to save profile", error);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setCustomAvatarUrl(url);
-      setAvatarType('upload');
-      setShowAvatarMenu(false);
-    }
-  };
-
-  const handleCameraCapture = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    setCustomAvatarUrl(url);
-    setAvatarType('upload');
-    setShowCamera(false);
-    setShowAvatarMenu(false);
-  };
-
-  const randomizeAvatar = () => {
-    const randomSeed = Math.random().toString(36).substring(7);
-    setPresetId(randomSeed);
-    setAvatarType('preset');
-  };
-
-  // Helper to render current avatar based on local state
-  const getCurrentDisplayAvatar = () => {
-    if (avatarType === 'upload' && customAvatarUrl) {
-      return customAvatarUrl;
-    }
-    return `https://avatar.iran.liara.run/public/${gender}?username=${presetId}`;
-  };
+  const latestBadgeId = user.badges && user.badges.length > 0 ? user.badges[user.badges.length - 1] : null;
+  const latestBadge = latestBadgeId ? BADGES.find(b => b.id === latestBadgeId) : null;
 
   return (
     <div className={`pt-6 px-6 pb-32 h-full overflow-y-auto ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
       <div className="flex flex-col gap-6 max-w-lg mx-auto">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-                <User className="text-mint-600" /> Profile & Settings
-            </h2>
-        </div>
+        <h2 className="text-2xl font-black flex items-center gap-2">
+            <User className="text-mint-600" /> My Profile
+        </h2>
 
-        {/* --- 1. GAMIFIED AVATAR SECTION --- */}
+        {/* Avatar Section */}
         <div className="flex flex-col items-center mt-4 mb-2">
             <div className="relative group cursor-pointer" onClick={() => setShowAvatarMenu(true)}>
-                {/* Animated Glow Ring */}
-                <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                    className="absolute -inset-1 rounded-full bg-gradient-to-tr from-mint-400 via-accent-yellow to-mint-400 opacity-60 blur-md group-hover:opacity-80 transition-opacity"
-                />
-                
-                {/* Main Avatar Circle */}
-                <div className="w-32 h-32 rounded-full border-[5px] border-white ring-4 ring-mint-50 overflow-hidden shadow-2xl bg-white relative z-10 transition-transform group-hover:scale-[1.02]">
-                    <img 
-                        src={getCurrentDisplayAvatar()} 
-                        alt="Avatar" 
-                        className="w-full h-full object-cover" 
-                    />
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="absolute -inset-1.5 rounded-full bg-gradient-to-tr from-mint-400 via-accent-yellow to-mint-400 opacity-60 blur-md" />
+                <div className="w-32 h-32 rounded-full border-[5px] border-white overflow-hidden shadow-2xl bg-white relative z-10">
+                    <img src={avatarType === 'upload' ? customAvatarUrl : `https://avatar.iran.liara.run/public/${gender}?username=${presetId}`} alt="Avatar" className="w-full h-full object-cover" />
                 </div>
-                
-                {/* Edit Button (Floating) */}
-                <button 
-                    onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(true); }}
-                    className="absolute top-0 right-0 bg-slate-800 text-white p-2 rounded-full shadow-lg hover:bg-slate-700 active:scale-95 transition-all border-2 border-white z-20"
-                >
-                    <Edit2 size={14} />
-                </button>
-
-                {/* Rank Badge (Bottom Centered) */}
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-3 py-1 rounded-full text-[10px] font-bold border-2 border-white shadow-lg z-20 flex items-center gap-1 whitespace-nowrap">
-                    <Sparkles size={10} className="text-accent-yellow" fill="#FFC107" />
-                    <span>LVL {user.levelNumber}</span>
-                </div>
-
-                {/* Avatar Options Menu (Popover) */}
-                <AnimatePresence>
-                    {showAvatarMenu && (
-                        <>
-                            <motion.div 
-                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className="fixed inset-0 bg-black/20 z-30 backdrop-blur-[2px] cursor-default"
-                                onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(false); }}
-                            />
-                            <motion.div 
-                                initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                className="absolute top-full mt-4 left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-2xl p-2 z-40 w-52 flex flex-col gap-1 border border-gray-100"
-                            >
-                                <div className="px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider">Change Photo</div>
-                                <button onClick={(e) => { e.stopPropagation(); setShowCamera(true); }} className="flex items-center gap-3 w-full px-3 py-2 hover:bg-mint-50 rounded-lg text-left text-sm font-bold text-slate-700 transition-colors">
-                                    <div className="p-2 bg-mint-100 rounded-full text-mint-600"><Camera size={16} /></div>
-                                    Take Photo
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="flex items-center gap-3 w-full px-3 py-2 hover:bg-mint-50 rounded-lg text-left text-sm font-bold text-slate-700 transition-colors">
-                                    <div className="p-2 bg-mint-100 rounded-full text-mint-600"><ImageIcon size={16} /></div>
-                                    From Gallery
-                                </button>
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-                            </motion.div>
-                        </>
-                    )}
-                </AnimatePresence>
+                {latestBadge && (
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-1 -left-1 w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-mint-50 z-20">
+                        <span className="text-xl">{latestBadge.icon}</span>
+                    </motion.div>
+                )}
+                <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(true); }} className="absolute bottom-0 right-0 bg-slate-800 text-white p-2 rounded-full border-2 border-white z-20"><Edit2 size={14} /></button>
             </div>
-            
-            <p className="mt-5 font-extrabold text-lg text-transparent bg-clip-text bg-gradient-to-r from-mint-600 to-mint-800">{user.level}</p>
+            <p className="mt-4 font-black text-xl tracking-tight uppercase text-mint-900">{user.level}</p>
+            <p className="text-xs font-bold opacity-40 uppercase tracking-widest">{user.reportCount} Reports Shared</p>
         </div>
 
-        {/* --- STYLE SELECTOR --- */}
-        <div className={`rounded-3xl p-6 border transition-colors ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
-            
-            <h3 className="text-xs font-bold uppercase tracking-wider opacity-50 mb-4">Customize Look</h3>
-
-            {/* Gender Selection - Explicit Step */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                {(['boy', 'girl'] as const).map((g) => {
-                     const isActive = gender === g;
-                     return (
-                        <button
-                            key={g}
-                            onClick={() => { setGender(g); setAvatarType('preset'); }}
-                            className={`relative py-3 rounded-2xl border-2 flex items-center justify-center gap-2 transition-all duration-300 ${
-                                isActive 
-                                ? 'border-mint-500 bg-mint-50 text-mint-700 ring-2 ring-mint-200 ring-offset-1' 
-                                : 'border-transparent bg-gray-50 text-slate-500 hover:bg-gray-100'
-                            }`}
-                        >
-                            <span className="text-2xl">{g === 'boy' ? '👦' : '👧'}</span>
-                            <span className="text-lg capitalize font-extrabold">{g}</span>
-                            {isActive && (
-                                <div className="absolute top-2 right-2 w-2 h-2 bg-mint-500 rounded-full animate-pulse" />
-                            )}
-                        </button>
-                     );
-                })}
-            </div>
-            
-            {/* Separator / Sub-label */}
-            <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Select Style</span>
-                <button onClick={randomizeAvatar} className="text-xs font-bold text-mint-600 flex items-center gap-1 hover:underline">
-                    <Dices size={14} /> Randomize
-                </button>
-            </div>
-            
-            {/* Scrollable Preset Grid */}
-            <div className="flex items-center gap-3 overflow-x-auto pb-4 pt-2 px-1 scrollbar-hide snap-x">
-                {PRESET_SEEDS.map((seed) => {
-                    const isSelected = avatarType === 'preset' && presetId === seed;
+        {/* Badges Gallery */}
+        <div className={`rounded-3xl p-6 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                <Trophy size={14} className="text-accent-yellow" /> Badges Earned
+            </h3>
+            <div className="flex gap-4 overflow-x-auto pb-2 px-1">
+                {BADGES.map(badge => {
+                    const isUnlocked = user.badges.includes(badge.id);
                     return (
-                        <button
-                            key={seed}
-                            onClick={() => { setPresetId(seed); setAvatarType('preset'); }}
-                            className={`flex flex-col items-center gap-2 min-w-[64px] snap-start relative transition-all duration-300 ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}
-                        >
-                            <div className={`w-16 h-16 rounded-full overflow-hidden border-2 bg-gray-100 transition-all duration-300 ${isSelected ? 'border-mint-500 ring-4 ring-mint-100 scale-105 shadow-lg' : 'border-transparent'}`}>
-                                <img 
-                                    src={`https://avatar.iran.liara.run/public/${gender}?username=${seed}`} 
-                                    alt={seed} 
-                                    className="w-full h-full object-cover"
-                                />
+                        <div key={badge.id} className={`flex flex-col items-center gap-2 min-w-[70px] ${isUnlocked ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl border-2 ${isUnlocked ? 'bg-mint-50 border-mint-200 shadow-sm' : 'bg-gray-100 border-transparent'}`}>
+                                {badge.icon}
                             </div>
-                             {isSelected && (
-                                <div className="absolute top-0 right-0 bg-mint-500 text-white rounded-full p-1 border-2 border-white shadow-sm transform translate-x-1 -translate-y-1">
-                                    <Check size={10} strokeWidth={4} />
-                                </div>
-                            )}
-                        </button>
-                    )
+                            <span className="text-[9px] font-black uppercase tracking-tighter text-center">{badge.name}</span>
+                        </div>
+                    );
                 })}
             </div>
         </div>
 
-        {/* --- 2. USER INFO FORM --- */}
+        {/* Personal Details */}
         <div className={`rounded-3xl p-6 border space-y-5 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
-            <h3 className="text-xs font-bold uppercase tracking-wider opacity-50 mb-1">Personal Details</h3>
-            
-            <div className="space-y-1.5">
-                <label className="text-xs font-bold ml-1 opacity-70">Full Name</label>
-                <div className={`flex items-center rounded-2xl px-4 py-3.5 border focus-within:border-mint-500 focus-within:ring-4 focus-within:ring-mint-50 transition-all ${theme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
-                    <User size={18} className="text-mint-500 mr-3" />
-                    <input 
-                        type="text" 
-                        value={formData.name} 
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        className="bg-transparent w-full outline-none font-bold text-sm"
-                        placeholder="Your Name"
-                    />
-                </div>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Personal Details</h3>
+            <div className="space-y-4">
+                <div className="space-y-1"><label className="text-[9px] font-bold text-slate-400 ml-1">NAME</label><div className="flex items-center rounded-2xl px-4 py-3 bg-gray-50 border border-gray-100"><User size={16} className="text-mint-500 mr-3" /><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-transparent w-full outline-none font-bold text-sm text-slate-700" /></div></div>
+                <div className="space-y-1"><label className="text-[9px] font-bold text-slate-400 ml-1">EMAIL</label><div className="flex items-center rounded-2xl px-4 py-3 bg-gray-50 border border-gray-100"><Mail size={16} className="text-mint-500 mr-3" /><input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="bg-transparent w-full outline-none font-bold text-sm text-slate-700" /></div></div>
             </div>
+        </div>
 
-            <div className="space-y-1.5">
-                <label className="text-xs font-bold ml-1 opacity-70">Email</label>
-                <div className={`flex items-center rounded-2xl px-4 py-3.5 border focus-within:border-mint-500 focus-within:ring-4 focus-within:ring-mint-50 transition-all ${theme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
-                    <Mail size={18} className="text-mint-500 mr-3" />
-                    <input 
-                        type="email" 
-                        value={formData.email} 
-                        onChange={(e) => setFormData({...formData, email: e.target.value})}
-                        className="bg-transparent w-full outline-none font-bold text-sm"
-                        placeholder="email@example.com"
-                    />
+        {/* App Settings (RESORED) */}
+        <div className={`rounded-3xl p-6 border space-y-5 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Interface Preferences</h3>
+            <div className="flex gap-4">
+                <div className="flex-1 space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 ml-1">THEME</label>
+                    <div className="flex p-1 bg-gray-100 rounded-xl">
+                        <button onClick={() => setTheme('light')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-2 text-xs font-black transition-all ${theme === 'light' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><Sun size={14} /> Light</button>
+                        <button onClick={() => setTheme('dark')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-2 text-xs font-black transition-all ${theme === 'dark' ? 'bg-slate-800 shadow-sm text-white' : 'text-slate-400'}`}><Moon size={14} /> Dark</button>
+                    </div>
                 </div>
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="text-xs font-bold ml-1 opacity-70">Mobile <span className="font-normal opacity-50">(Optional)</span></label>
-                <div className={`flex items-center rounded-2xl px-4 py-3.5 border focus-within:border-mint-500 focus-within:ring-4 focus-within:ring-mint-50 transition-all ${theme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-gray-50 border-gray-200'}`}>
-                    <Smartphone size={18} className="text-mint-500 mr-3" />
-                    <input 
-                        type="tel" 
-                        value={formData.mobile} 
-                        onChange={(e) => setFormData({...formData, mobile: e.target.value})}
-                        className="bg-transparent w-full outline-none font-bold text-sm"
-                        placeholder="+91 98765 43210"
-                    />
+                <div className="flex-1 space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 ml-1">MAP STYLE</label>
+                    <div className="flex p-1 bg-gray-100 rounded-xl">
+                        <button onClick={() => setMapStyle('simple')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'simple' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><Globe size={14} /> Simple</button>
+                        <button onClick={() => setMapStyle('satellite')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'satellite' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><MapIcon size={14} /> Satellite</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        {/* --- 3. APP SETTINGS --- */}
+        {/* Avatar Creator Settings (RESTORED) */}
         <div className={`rounded-3xl p-6 border space-y-5 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
-            <h3 className="text-xs font-bold uppercase tracking-wider opacity-50 mb-1">Preferences</h3>
-            
-            {/* Theme Toggle */}
-            <div className="flex items-center justify-between py-1">
-                <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-2xl ${theme === 'dark' ? 'bg-slate-900 text-yellow-400' : 'bg-orange-100 text-orange-500'}`}>
-                        {theme === 'dark' ? <Moon size={22} /> : <Sun size={22} />}
-                    </div>
-                    <div>
-                        <p className="font-bold text-sm">App Theme</p>
-                        <p className="text-xs opacity-60 font-semibold">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</p>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Guardian Avatar Generator</h3>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 ml-1">GENDER</label>
+                    <div className="flex p-1 bg-gray-100 rounded-xl">
+                        <button onClick={() => setGender('boy')} className={`flex-1 py-2 rounded-lg text-xs font-black ${gender === 'boy' ? 'bg-white text-blue-500' : 'text-slate-400'}`}>Boy</button>
+                        <button onClick={() => setGender('girl')} className={`flex-1 py-2 rounded-lg text-xs font-black ${gender === 'girl' ? 'bg-white text-pink-500' : 'text-slate-400'}`}>Girl</button>
                     </div>
                 </div>
-                <div className="bg-gray-200 p-1 rounded-full flex w-16 relative cursor-pointer shadow-inner" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
-                    <motion.div 
-                        layout 
-                        className="w-7 h-7 bg-white rounded-full shadow-md"
-                        animate={{ x: theme === 'light' ? 0 : 28 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    />
+                <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 ml-1">PRESET ID</label>
+                    <div className="flex items-center rounded-2xl px-4 py-2 bg-gray-50 border border-gray-100">
+                        <input type="text" value={presetId} onChange={(e) => setPresetId(e.target.value)} className="bg-transparent w-full outline-none font-bold text-xs" />
+                        <button onClick={() => setPresetId(Math.random().toString(36).substring(7))}><Dices size={14} className="text-mint-500 ml-2" /></button>
+                    </div>
                 </div>
             </div>
-
-            <div className={`w-full h-px ${theme === 'dark' ? 'bg-slate-700' : 'bg-gray-100'}`}></div>
-
-            {/* Map Style Setting */}
-            <div>
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 rounded-xl bg-blue-100 text-blue-500">
-                        <MapIcon size={20} />
-                    </div>
-                    <p className="font-bold text-sm">Map Visualization</p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <button 
-                        onClick={() => setMapStyle('simple')}
-                        className={`relative border-2 rounded-2xl p-4 flex flex-col items-center gap-3 transition-all duration-300 ${mapStyle === 'simple' ? 'border-mint-500 bg-mint-50/50 shadow-sm' : 'border-transparent bg-gray-50 opacity-70 hover:opacity-100'}`}
-                    >
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border border-gray-300 shadow-inner">
-                             <div className="w-full h-1/2 bg-gray-300 mt-auto"></div>
-                        </div>
-                        <span className={`text-xs font-bold ${mapStyle === 'simple' ? 'text-mint-700' : 'text-slate-500'}`}>Simple View</span>
-                        {mapStyle === 'simple' && <div className="absolute top-3 right-3 w-2 h-2 bg-mint-500 rounded-full"></div>}
-                    </button>
-
-                    <button 
-                         onClick={() => setMapStyle('satellite')}
-                         className={`relative border-2 rounded-2xl p-4 flex flex-col items-center gap-3 transition-all duration-300 ${mapStyle === 'satellite' ? 'border-mint-500 bg-mint-50/50 shadow-sm' : 'border-transparent bg-gray-50 opacity-70 hover:opacity-100'}`}
-                    >
-                        <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-600 text-white shadow-inner">
-                             <Globe size={20} />
-                        </div>
-                        <span className={`text-xs font-bold ${mapStyle === 'satellite' ? 'text-mint-700' : 'text-slate-500'}`}>Satellite View</span>
-                        {mapStyle === 'satellite' && <div className="absolute top-3 right-3 w-2 h-2 bg-mint-500 rounded-full"></div>}
-                    </button>
-                </div>
-            </div>
+            <p className="text-[9px] font-bold text-slate-400 italic">Avatar dynamically generated based on your Preset ID.</p>
         </div>
 
-        {/* --- SAVE BUTTON --- */}
-        <button 
-            onClick={handleSave}
-            disabled={isSaving}
-            className="w-full bg-mint-600 text-white font-bold py-4 rounded-2xl shadow-coin active:shadow-coin-pressed active:translate-y-1 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mb-8"
-        >
-            {isSaving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-            {isSaving ? 'Saving Changes...' : 'Save Changes'}
-        </button>
-
+        <button onClick={handleSave} disabled={isSaving} className="w-full bg-mint-600 text-white font-black py-4 rounded-2xl shadow-coin active:shadow-coin-pressed active:translate-y-1 transition-all flex items-center justify-center gap-2 disabled:opacity-70 mb-8">{isSaving ? <Loader2 className="animate-spin" /> : <Save size={20} />} {isSaving ? 'UPDATING...' : 'SAVE SETTINGS'}</button>
       </div>
-
-      {/* Camera Modal integration for Profile Photo */}
+      
       <AnimatePresence>
-        {showCamera && (
-            <CameraModal 
-                onClose={() => setShowCamera(false)}
-                onCapture={(blob) => handleCameraCapture(blob)}
-            />
+        {showAvatarMenu && (
+          <AvatarMenu 
+            onClose={() => setShowAvatarMenu(false)} 
+            onSelect={(url) => { setCustomAvatarUrl(url); setAvatarType('upload'); setShowAvatarMenu(false); }} 
+          />
         )}
       </AnimatePresence>
-
     </div>
   );
 };
+
+const AvatarMenu = ({ onClose, onSelect }: { onClose: () => void, onSelect: (url: string) => void }) => (
+    <>
+        <div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" onClick={onClose} />
+        <motion.div initial={{ y: 200 }} animate={{ y: 0 }} exit={{ y: 200 }} className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[32px] p-8 z-50 flex flex-col gap-4 shadow-2xl">
+            <h3 className="font-black text-xl text-slate-800">Change Guardian Avatar</h3>
+            <button className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><Camera className="group-hover:text-mint-600" /> Use Camera</button>
+            <button className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><ImageIcon className="group-hover:text-mint-600" /> From Gallery</button>
+            <button onClick={onClose} className="mt-2 py-3 font-black text-slate-400 text-sm">Cancel</button>
+        </motion.div>
+    </>
+);
+
+const Edit2 = ({ size, className }: { size: number, className?: string }) => <Edit2Icon size={size} className={className} />;
+import { Edit2 as Edit2Icon } from 'lucide-react';
 
 export default ProfileScreen;
