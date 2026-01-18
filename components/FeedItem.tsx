@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink, AlertCircle } from 'lucide-react';
+import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink, AlertCircle, Bot, Zap } from 'lucide-react';
 import { FeedItemData } from '../services/api';
 
 const FeedItem: React.FC<{ item: FeedItemData }> = ({ item }) => {
   switch (item.type) {
+    case 'ai_alert': return <AIAlertItem item={item} />;
     case 'news': return <NewsItem item={item} />;
     case 'official': return <OfficialItem item={item} />;
     case 'reel': return <ReelItem item={item} />;
@@ -11,6 +12,40 @@ const FeedItem: React.FC<{ item: FeedItemData }> = ({ item }) => {
     default: return null;
   }
 };
+
+const AIAlertItem = ({ item }: { item: FeedItemData }) => (
+  <div className={`rounded-3xl p-5 shadow-lg border mb-5 relative overflow-hidden bg-gradient-to-br ${item.severity === 'Critical' ? 'from-red-50 to-white border-red-100' : 'from-orange-50 to-white border-orange-100'}`}>
+     <div className="absolute top-0 right-0 p-2 opacity-5">
+        <Bot size={80} />
+     </div>
+     <div className="flex justify-between items-start mb-3">
+        <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-xl shadow-sm ${item.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500'}`}>
+                <Bot size={20} className="text-white" />
+            </div>
+            <div>
+                <div className="flex items-center gap-1">
+                    <h3 className="font-black text-slate-800 text-sm tracking-tight">SatarkX AI Detection</h3>
+                    <Zap size={12} className="text-yellow-500" fill="currentColor" />
+                </div>
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{item.timestamp}</p>
+            </div>
+        </div>
+        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${item.severity === 'Critical' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-orange-100 text-orange-600 border-orange-200'}`}>
+            {item.severity}
+        </span>
+    </div>
+    <p className="text-slate-700 text-sm font-bold leading-relaxed mb-4">{item.content}</p>
+    <div className="flex items-center gap-2">
+        <button className="flex-1 bg-slate-800 text-white py-2 rounded-xl text-xs font-black active:scale-95 transition-transform">
+            AVOID ROUTE
+        </button>
+        <button className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-black text-slate-500 active:scale-95 transition-transform">
+            DISMISS
+        </button>
+    </div>
+  </div>
+);
 
 const NewsItem = ({ item }: { item: FeedItemData }) => (
   <div className="bg-white rounded-3xl p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 mb-5">
@@ -87,7 +122,7 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
           setIsPlaying(false);
         }
       },
-      { threshold: 0.6 } // Play when 60% visible
+      { threshold: 0.6 }
     );
 
     if (videoRef.current) observer.observe(videoRef.current);
@@ -111,14 +146,12 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
         <div className="relative rounded-3xl overflow-hidden aspect-[9/16] mb-5 bg-slate-900 shadow-lg border border-gray-100 flex flex-col items-center justify-center p-6 text-center">
             <AlertCircle size={40} className="text-slate-600 mb-2" />
             <p className="text-slate-400 font-bold text-sm">Video Unavailable</p>
-            <p className="text-slate-600 text-xs mt-1">The source content could not be loaded.</p>
             
             <div className="absolute bottom-0 left-0 right-0 p-5 text-white bg-black/50 backdrop-blur-sm">
                 <div className="flex items-center gap-2 mb-2">
                     <img src={item.avatar} className="w-9 h-9 rounded-full border-2 border-white/50" />
                     <div className="flex flex-col text-left">
                         <span className="font-bold text-sm text-white drop-shadow-md">{item.author}</span>
-                        <span className="text-[10px] bg-red-500/50 px-1.5 py-0.5 rounded font-bold uppercase inline-block w-fit">Error</span>
                     </div>
                 </div>
             </div>
@@ -136,15 +169,10 @@ const ReelItem = ({ item }: { item: FeedItemData }) => {
          muted={isMuted}
          playsInline
          onClick={togglePlay}
-         onError={(e) => {
-             console.error("Video load error", e);
-             setHasError(true);
-         }}
+         onError={() => setHasError(true)}
        />
-       {/* Overlays */}
        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none"></div>
        
-       {/* Controls */}
        <button onClick={() => setIsMuted(!isMuted)} className="absolute top-4 right-4 bg-white/20 p-2 rounded-full text-white backdrop-blur-md border border-white/20">
           {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
        </button>

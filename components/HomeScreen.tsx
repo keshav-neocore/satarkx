@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, Trophy } from 'lucide-react';
+import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, Trophy, Bot } from 'lucide-react';
 import MapComponent from './MapComponent';
 import CameraModal from './CameraModal';
 import ProfileScreen from './ProfileScreen';
@@ -17,6 +17,10 @@ const HomeScreen: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [myReports, setMyReports] = useState<Report[]>([]);
+  const [isAIScanning, setIsAIScanning] = useState(false);
+  
+  // Map Style Local State
+  const [viewMapStyle, setViewMapStyle] = useState<'simple' | 'satellite' | 'traffic'>('simple');
 
   useEffect(() => {
     loadData();
@@ -25,22 +29,48 @@ const HomeScreen: React.FC = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
-          fetchHazards(latitude, longitude).then(setHazards);
+          refreshHazards(latitude, longitude);
         },
-        (error) => {
+        () => {
           const fallback = { lat: 28.6139, lng: 77.2090 };
           setCurrentLocation(fallback);
-          fetchHazards(fallback.lat, fallback.lng).then(setHazards);
+          refreshHazards(fallback.lat, fallback.lng);
         }
       );
     }
   }, []);
+
+  // Update view map style when user preferences load
+  useEffect(() => {
+    if (user?.preferences.mapStyle) {
+        setViewMapStyle(user.preferences.mapStyle);
+    }
+  }, [user]);
+
+  // Periodic AI scanning simulation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (currentLocation) {
+        setIsAIScanning(true);
+        setTimeout(() => {
+           refreshHazards(currentLocation.lat, currentLocation.lng);
+           setIsAIScanning(false);
+        }, 2000);
+      }
+    }, 15000); // Scan every 15 seconds
+    return () => clearInterval(interval);
+  }, [currentLocation]);
 
   useEffect(() => {
     if (activeTab === 'Reports') {
         fetchUserReports().then(setMyReports);
     }
   }, [activeTab]);
+
+  const refreshHazards = async (lat: number, lng: number) => {
+    const h = await fetchHazards(lat, lng);
+    setHazards(h);
+  };
 
   const loadData = async () => {
       const u = await fetchUserProfile();
@@ -55,6 +85,7 @@ const HomeScreen: React.FC = () => {
         await loadData();
         const reports = await fetchUserReports();
         setMyReports(reports);
+        refreshHazards(currentLocation.lat, currentLocation.lng);
     }
     setIsSubmitting(false);
   };
@@ -67,20 +98,42 @@ const HomeScreen: React.FC = () => {
     );
   }
 
-  const mapStyle = user.preferences.mapStyle; 
-
   return (
     <div className={`relative w-full h-full overflow-hidden font-sans ${user.preferences.theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-gray-100'}`}>
       
+      {/* Header with AI Scanning indicator */}
       <div className={`absolute top-0 left-0 right-0 z-30 px-6 py-4 flex items-center justify-between backdrop-blur-md ${user.preferences.theme === 'dark' ? 'bg-slate-900/80 border-b border-slate-700' : 'bg-white/80 border-b border-mint-50'}`}>
           <ProfileHeaderButton user={user} onPress={() => setActiveTab('Profile')} />
+          
           <div className="flex flex-col items-center">
               <span className="text-[10px] font-black uppercase tracking-widest text-mint-600">SatarkX</span>
-              <div className="flex items-center gap-1">
-                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                 <span className="text-[9px] font-bold opacity-60">Live Pulse</span>
-              </div>
+              <AnimatePresence mode="wait">
+                {isAIScanning ? (
+                    <motion.div 
+                        key="scanning"
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        className="flex items-center gap-1.5 text-purple-600"
+                    >
+                        <Bot size={10} className="animate-bounce" />
+                        <span className="text-[9px] font-black uppercase tracking-tight">AI Scanning...</span>
+                    </motion.div>
+                ) : (
+                    <motion.div 
+                        key="pulse"
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        className="flex items-center gap-1"
+                    >
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-[9px] font-bold opacity-60">Live Pulse</span>
+                    </motion.div>
+                )}
+              </AnimatePresence>
           </div>
+
           <motion.div whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-mint-50 px-3 py-1.5 rounded-full border border-mint-100 shadow-sm">
             <Zap size={14} className="text-yellow-500" fill="currentColor" />
             <span className="text-xs font-black text-mint-900">{user.currentPoints}</span>
@@ -88,7 +141,17 @@ const HomeScreen: React.FC = () => {
       </div>
 
       <div className={`absolute inset-0 z-0 pt-20 pb-20 overflow-y-auto ${user.preferences.theme === 'dark' ? 'bg-slate-900' : 'bg-mint-50'}`}>
-        {activeTab === 'Map' && currentLocation && <div className="w-full h-full"><MapComponent latitude={currentLocation.lat} longitude={currentLocation.lng} hazards={hazards} mapStyle={mapStyle} /></div>}
+        {activeTab === 'Map' && currentLocation && (
+            <div className="w-full h-full">
+                <MapComponent 
+                    latitude={currentLocation.lat} 
+                    longitude={currentLocation.lng} 
+                    hazards={hazards} 
+                    mapStyle={viewMapStyle}
+                    onMapStyleChange={setViewMapStyle} 
+                />
+            </div>
+        )}
         {activeTab === 'Feed' && <FeedScreen />}
         {activeTab === 'Reports' && (
             <div className="pt-6 px-4 pb-20 min-h-full">

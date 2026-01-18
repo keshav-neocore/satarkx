@@ -9,7 +9,7 @@ export interface LoginResponse {
 
 export interface UserPreferences {
   theme: 'light' | 'dark';
-  mapStyle: 'simple' | 'satellite';
+  mapStyle: 'simple' | 'satellite' | 'traffic';
 }
 
 export interface Badge {
@@ -49,11 +49,15 @@ export interface LeaderboardUser {
 }
 
 export interface Hazard {
-  id: number;
+  id: string | number;
   lat: number;
   lng: number;
   type: string;
   title: string;
+  severity: 'Critical' | 'Warning' | 'Advisory';
+  source: 'User' | 'AI';
+  description?: string;
+  confidence?: number;
 }
 
 export interface Report {
@@ -76,7 +80,7 @@ export interface Reward {
 
 export interface FeedItemData {
   id: string;
-  type: 'news' | 'official' | 'reel' | 'ad';
+  type: 'news' | 'official' | 'reel' | 'ad' | 'ai_alert';
   author: string;
   avatar: string;
   content: string;
@@ -85,6 +89,7 @@ export interface FeedItemData {
   image?: string;
   likes?: number;
   videoUrl?: string;
+  severity?: 'Critical' | 'Warning' | 'Advisory';
 }
 
 export const BADGES: Badge[] = [
@@ -95,12 +100,6 @@ export const BADGES: Badge[] = [
   { id: 'b5', name: 'Legend', icon: '🌟', unlockedAtLevel: 5 },
 ];
 
-/**
- * Requirement:
- * Level 1: needs 500 for L2.
- * Level 2: needs 1000 for L3.
- * Level 3: needs 1500 for L4.
- */
 export const calculateLevelInfo = (totalPoints: number) => {
   let level = 1;
   let remainingPoints = totalPoints;
@@ -220,7 +219,6 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   const userId = getActiveUserId();
   let finalUpdates = { ...updates };
   
-  // Recalculate level if points updated
   if (updates.currentPoints !== undefined) {
     const levelInfo = calculateLevelInfo(updates.currentPoints);
     finalUpdates.level = levelInfo.title;
@@ -258,14 +256,13 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
 
 export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<{ success: boolean; points_added: number }> => {
   const userId = getActiveUserId();
-  const reportPoints = 100; // 100 Points per report as per request
+  const reportPoints = 100;
 
   if (!isSupabaseAvailable) {
     const newReport: Report = { id: Date.now().toString(), type: mediaType, url: URL.createObjectURL(mediaBlob), timestamp: new Date(), location: { lat, lng }, pointsEarned: reportPoints, status: 'Verified' };
     MOCK_REPORTS.unshift(newReport);
     localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
     
-    // Scratch cards
     for (let i = 0; i < 3; i++) {
         MOCK_REWARDS.unshift({ id: `r_${Date.now()}_${i}`, status: 'unscratched', value: Math.floor(Math.random() * 50) + 10, type: 'points', timestamp: new Date() });
     }
@@ -316,12 +313,95 @@ export const fetchLeaderboard = async (): Promise<{ top3: LeaderboardUser[], nea
 };
 
 export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> => {
-    return Array.from({ length: 5 }).map((_, i) => ({ id: i, lat: lat + (Math.random() - 0.5) * 0.01, lng: lng + (Math.random() - 0.5) * 0.01, type: 'Hazard', title: 'Issue Reported' }));
+    const userHazards: Hazard[] = Array.from({ length: 3 }).map((_, i) => ({ 
+        id: `u_${i}`, 
+        lat: lat + (Math.random() - 0.5) * 0.01, 
+        lng: lng + (Math.random() - 0.5) * 0.01, 
+        type: 'User Report', 
+        title: 'Road Blockage',
+        severity: 'Warning',
+        source: 'User'
+    }));
+    
+    const aiHazards = await fetchAIDetections(lat, lng);
+    return [...userHazards, ...aiHazards];
+};
+
+// --- NEW: AI DETECTION ENGINE MOCK ---
+
+export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazard[]> => {
+    const detections: Hazard[] = [];
+    
+    // Simulate API calls to Traffic & Weather
+    const rainIntensity = Math.random() * 100; // mm/hr
+    const trafficSpeed = Math.random() * 80; // km/hr
+    const isCameraObstacle = Math.random() < 0.15; // 15% chance of camera detection
+
+    // Rule 1: Flash Flood Risk
+    if (rainIntensity > 50 && trafficSpeed < 10) {
+        detections.push({
+            id: `ai_ff_${Date.now()}`,
+            lat: lat + 0.005,
+            lng: lng + 0.005,
+            type: 'Flash Flood',
+            title: 'Critical Flood Risk',
+            severity: 'Critical',
+            source: 'AI',
+            description: `Extreme rain (${rainIntensity.toFixed(0)}mm/hr) & stopped traffic detected.`,
+            confidence: 0.92
+        });
+    }
+
+    // Rule 2: Potential Accident/Blockage
+    if (trafficSpeed < 5 && rainIntensity < 5) {
+        detections.push({
+            id: `ai_acc_${Date.now()}`,
+            lat: lat - 0.004,
+            lng: lng + 0.002,
+            type: 'Accident/Blockage',
+            title: 'Potential Accident',
+            severity: 'Warning',
+            source: 'AI',
+            description: "Stationary traffic under clear skies suggests a road blockage.",
+            confidence: 0.78
+        });
+    }
+
+    // Rule 3: Visual Confirmation
+    if (isCameraObstacle) {
+        detections.push({
+            id: `ai_vis_${Date.now()}`,
+            lat: lat + (Math.random() - 0.5) * 0.005,
+            lng: lng + (Math.random() - 0.5) * 0.005,
+            type: 'Visual Hazard',
+            title: 'AI Visual Alert',
+            severity: 'Critical',
+            source: 'AI',
+            description: "CV Model confirmed an obstacle via live camera feed analysis.",
+            confidence: 0.98
+        });
+    }
+
+    return detections;
 };
 
 export const fetchLivePulseFeed = async (lat: number, lng: number): Promise<FeedItemData[]> => {
-    return [
+    const detections = await fetchAIDetections(lat, lng);
+    const aiFeedItems: FeedItemData[] = detections.map(d => ({
+        id: String(d.id),
+        type: 'ai_alert',
+        author: 'SatarkX AI Engine',
+        avatar: 'https://avatar.iran.liara.run/public/boy?username=AI',
+        content: d.description || d.title,
+        timestamp: 'Just Now',
+        verified: true,
+        severity: d.severity
+    }));
+
+    const standardFeed: FeedItemData[] = [
         { id: '1', type: 'news', author: 'Civic Watch', avatar: 'https://avatar.iran.liara.run/public/boy?username=CivicWatch', content: 'Major water logging reported near CP.', timestamp: '15m ago', verified: true, likes: 42 },
         { id: '2', type: 'official', author: 'Delhi Police', avatar: 'https://avatar.iran.liara.run/public/boy?username=TrafficPolice', content: 'Avoid Ring Road near Moolchand.', timestamp: '30m ago' }
     ];
+
+    return [...aiFeedItems, ...standardFeed];
 };
