@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { Hazard } from '../services/api';
-import { renderToString } from 'react-dom/server';
-import { AlertTriangle, Bot, Layers, Check, Car, Globe, Map as MapIcon } from 'lucide-react';
+import { Layers, Check, Car, Globe, Map as MapIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface MapComponentProps {
@@ -12,6 +11,15 @@ interface MapComponentProps {
   mapStyle: 'simple' | 'satellite' | 'traffic';
   onMapStyleChange: (style: 'simple' | 'satellite' | 'traffic') => void;
 }
+
+const getHazardIconSvg = (isAI: boolean, color: string) => {
+    // Basic SVG paths approximating Lucide icons
+    const botPath = `<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>`;
+    const alertPath = `<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>`;
+    const path = isAI ? botPath : alertPath;
+    
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+};
 
 const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazards, mapStyle, onMapStyleChange }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -59,8 +67,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
       }).addTo(layerRef.current);
     
     } else if (mapStyle === 'traffic') {
-        // Using Google Maps Traffic Layer (Note: Requires internet, valid for prototyping)
-        // Alternatively could use a dark map style to represent "night/traffic" mode visually
         L.tileLayer('https://mt0.google.com/vt/lyrs=m,traffic&hl=en&x={x}&y={y}&z={z}', {
             maxZoom: 20,
             attribution: 'Google'
@@ -91,11 +97,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
       const isAI = hazard.source === 'AI';
       const severityColor = hazard.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500';
       
-      const iconHtml = renderToString(
-        isAI 
-          ? <Bot color="white" size={20} /> 
-          : <AlertTriangle color="white" size={20} />
-      );
+      const iconHtml = getHazardIconSvg(isAI, 'white');
 
       const hazardIcon = L.divIcon({
         className: 'custom-hazard-icon',

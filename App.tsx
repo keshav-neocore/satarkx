@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { User, Mail, Smartphone, Loader2, AlertCircle } from 'lucide-react';
+import { User, Mail, Smartphone, Loader2, AlertCircle, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
 import Background from './components/Background';
 import { LionLogo, SatarkShield, GoogleIcon } from './components/Logos';
 import InputField from './components/InputField';
-import { loginUser } from './services/api';
+import { loginUser, signUpUser, resetUserPassword } from './services/api';
 import HomeScreen from './components/HomeScreen';
 
 const App: React.FC = () => {
@@ -109,43 +109,94 @@ interface LoginScreenProps {
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
+  // authMode: 'login' | 'signup' | 'forgot'
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const handleLogin = async () => {
+  const handleSubmit = async () => {
     setError(null);
-    if (!username || !email) {
-      setError("Please fill in both User Name and Email Address.");
+    setSuccessMsg(null);
+    
+    // Simple Validation
+    if (!email) {
+      setError("Please enter your email.");
       return;
     }
 
+    if (authMode === 'signup' || authMode === 'forgot') {
+        if (!password || password.length < 6) {
+             setError("Password must be at least 6 characters.");
+             return;
+        }
+    } else {
+        if (!password) {
+            setError("Please enter your password.");
+            return;
+        }
+    }
+
+    if (authMode === 'signup' && !username) {
+        setError("Please enter a username.");
+        return;
+    }
+    
     setIsLoading(true);
 
     try {
-      // 1. Save to Local Storage (Backup/Cache)
-      const userData = {
-        username,
-        email,
-        timestamp: new Date().toISOString()
-      };
-      localStorage.setItem('satarkx_user', JSON.stringify(userData));
-
-      // 2. Send to Backend
-      const response = await loginUser(username, email);
+      if (authMode === 'signup') {
+          // Sign Up Flow
+          const response = await signUpUser(email, password, username);
+          if (response.confirmationRequired) {
+              setSuccessMsg("Account created! Please verify your email to log in.");
+              setAuthMode('login');
+              setPassword('');
+          } else if (response.user) {
+              onLoginSuccess();
+          }
+      } else if (authMode === 'forgot') {
+          // Reset Password Flow
+          await resetUserPassword(email, password);
+          setSuccessMsg("Password updated! Please login.");
+          setTimeout(() => {
+              setAuthMode('login');
+              setSuccessMsg(null);
+              setPassword('');
+          }, 2000);
+      } else {
+          // Login Flow
+          await loginUser(email, password);
+          onLoginSuccess();
+      }
       
-      console.log("Backend Response:", response);
-      // alert(`Login Successful!\nServer ID: ${response.id}\nUser: ${username}`);
-      
-      onLoginSuccess();
-      
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Failed to connect to the server. Please try again.");
+      setError(err.message || "Authentication failed. Please check your details.");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getTitle = () => {
+      switch(authMode) {
+          case 'signup': return "Create Account";
+          case 'forgot': return "Reset Password";
+          default: return "SatarkX";
+      }
+  };
+
+  const getSubtitle = () => {
+      switch(authMode) {
+          case 'signup': return "Start your guardian journey";
+          case 'forgot': return "Enter email & new password";
+          default: return "Navigate Safe. Stay Alert.";
+      }
   };
 
   return (
@@ -159,7 +210,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       <div className="flex-1 flex flex-col items-center justify-center pt-8 pb-4">
         <motion.div 
           layoutId="main-logo-wrapper" 
-          className="w-28 h-28 mb-4 filter drop-shadow-xl"
+          className="w-24 h-24 mb-4 filter drop-shadow-xl"
         >
           <SatarkShield className="w-full h-full" />
         </motion.div>
@@ -167,7 +218,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           layoutId="app-title"
           className="text-3xl font-extrabold text-mint-900 tracking-tight"
         >
-          SatarkX
+          {getTitle()}
         </motion.h1>
         <motion.p 
           initial={{ opacity: 0, y: 20 }}
@@ -175,31 +226,39 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           transition={{ delay: 0.3 }}
           className="text-mint-600 font-semibold mt-2"
         >
-          Navigate Safe. Stay Alert.
+          {getSubtitle()}
         </motion.p>
       </div>
 
       {/* INPUT SECTION */}
-      <div className="flex-[2] flex flex-col justify-start space-y-6">
-        <motion.div
-           initial={{ opacity: 0, x: -20 }}
-           animate={{ opacity: 1, x: 0 }}
-           transition={{ delay: 0.4 }}
-           className={isLoading ? 'opacity-70 pointer-events-none' : ''}
-        >
-          <InputField 
-            label="User Name" 
-            icon={User} 
-            placeholder="Explorer123"
-            value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-              if(error) setError(null);
-            }}
-          />
-        </motion.div>
+      <div className="flex-[2] flex flex-col justify-start space-y-4">
+        
+        {/* Username Field - Only visible in Sign Up */}
+        <AnimatePresence>
+            {authMode === 'signup' && (
+                <motion.div
+                    key="username"
+                    initial={{ opacity: 0, height: 0, y: -20 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -20 }}
+                    className={`overflow-hidden ${isLoading ? 'opacity-70 pointer-events-none' : ''}`}
+                >
+                    <InputField 
+                        label="User Name" 
+                        icon={User} 
+                        placeholder="Explorer123"
+                        value={username}
+                        onChange={(e) => {
+                            setUsername(e.target.value);
+                            if(error) setError(null);
+                        }}
+                    />
+                </motion.div>
+            )}
+        </AnimatePresence>
 
         <motion.div
+           layout
            initial={{ opacity: 0, x: 20 }}
            animate={{ opacity: 1, x: 0 }}
            transition={{ delay: 0.5 }}
@@ -217,7 +276,53 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             }}
           />
         </motion.div>
+
+        <motion.div
+           layout
+           initial={{ opacity: 0, x: 20 }}
+           animate={{ opacity: 1, x: 0 }}
+           transition={{ delay: 0.6 }}
+           className={`relative ${isLoading ? 'opacity-70 pointer-events-none' : ''}`}
+        >
+          <InputField 
+            label={authMode === 'forgot' ? "New Password" : "Password"}
+            type={showPassword ? "text" : "password"}
+            icon={authMode === 'forgot' ? KeyRound : Lock} 
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if(error) setError(null);
+            }}
+          />
+          <button 
+             onClick={() => setShowPassword(!showPassword)}
+             className="absolute right-4 top-[34px] text-mint-400 hover:text-mint-600 transition-colors"
+             type="button"
+          >
+             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
+        </motion.div>
         
+        {/* Forgot Password Link - Only in Login Mode */}
+        <AnimatePresence>
+            {authMode === 'login' && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex justify-end"
+                >
+                    <button 
+                        onClick={() => { setAuthMode('forgot'); setError(null); }}
+                        className="text-xs font-bold text-mint-600 hover:text-mint-800 transition-colors"
+                    >
+                        Forgot Password?
+                    </button>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
         {/* Error Message */}
         <AnimatePresence>
           {error && (
@@ -233,15 +338,31 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           )}
         </AnimatePresence>
 
+        {/* Success Message */}
+        <AnimatePresence>
+            {successMsg && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-lg border border-green-100 text-sm font-bold"
+                >
+                    <KeyRound size={16} />
+                    {successMsg}
+                </motion.div>
+            )}
+        </AnimatePresence>
+
         {/* Main Action Button */}
         <motion.div
+          layout
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
           className="pt-4"
         >
           <button 
-            onClick={handleLogin}
+            onClick={handleSubmit}
             disabled={isLoading}
             className="w-full relative group disabled:opacity-80 disabled:cursor-not-allowed"
           >
@@ -252,11 +373,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                {isLoading ? (
                  <>
                   <Loader2 className="animate-spin" />
-                  LOGGING IN...
+                  {authMode === 'signup' ? "CREATING..." : authMode === 'forgot' ? "UPDATING..." : "LOGGING IN..."}
                  </>
                ) : (
                  <>
-                   LOGIN
+                   {authMode === 'signup' ? "SIGN UP" : authMode === 'forgot' ? "RESET PASSWORD" : "LOGIN"}
                    <span className="bg-white/20 rounded-full p-1">
                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                    </span>
@@ -268,34 +389,54 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </button>
         </motion.div>
 
-        {/* SOCIAL LOGIN */}
+        {/* SOCIAL LOGIN & SWITCH MODE */}
         <motion.div
+          layout
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
           className={`space-y-4 pt-2 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
         >
-          <div className="relative flex py-2 items-center">
-            <div className="flex-grow border-t border-mint-200"></div>
-            <span className="flex-shrink-0 mx-4 text-mint-500 font-semibold text-sm">Or join with</span>
-            <div className="flex-grow border-t border-mint-200"></div>
+          <div className="flex justify-center">
+              <button 
+                onClick={() => {
+                    if (authMode === 'login') setAuthMode('signup');
+                    else setAuthMode('login');
+                    setError(null);
+                    setSuccessMsg(null);
+                }} 
+                className="text-sm font-bold text-mint-700 hover:underline"
+              >
+                  {authMode === 'login' ? "New here? Create Account" : "Already have an account? Login"}
+              </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <button className="flex items-center justify-center gap-2 bg-white border-2 border-mint-100 rounded-xl py-3 shadow-sm active:scale-95 transition-transform">
-              <GoogleIcon className="w-5 h-5" />
-              <span className="font-bold text-slate-600 text-sm">Google</span>
-            </button>
-            <button className="flex items-center justify-center gap-2 bg-white border-2 border-mint-100 rounded-xl py-3 shadow-sm active:scale-95 transition-transform">
-              <Smartphone className="w-5 h-5 text-mint-600" />
-              <span className="font-bold text-slate-600 text-sm">OTP</span>
-            </button>
-          </div>
+          {authMode === 'login' && (
+              <>
+                <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-mint-200"></div>
+                    <span className="flex-shrink-0 mx-4 text-mint-500 font-semibold text-sm">Or join with</span>
+                    <div className="flex-grow border-t border-mint-200"></div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <button className="flex items-center justify-center gap-2 bg-white border-2 border-mint-100 rounded-xl py-3 shadow-sm active:scale-95 transition-transform">
+                    <GoogleIcon className="w-5 h-5" />
+                    <span className="font-bold text-slate-600 text-sm">Google</span>
+                    </button>
+                    <button className="flex items-center justify-center gap-2 bg-white border-2 border-mint-100 rounded-xl py-3 shadow-sm active:scale-95 transition-transform">
+                    <Smartphone className="w-5 h-5 text-mint-600" />
+                    <span className="font-bold text-slate-600 text-sm">OTP</span>
+                    </button>
+                </div>
+              </>
+          )}
         </motion.div>
       </div>
 
       {/* FOOTER */}
       <motion.div
+        layout
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.0 }}

@@ -1,14 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Accessing environment variables
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+// Configuration for SatarkX Supabase Project
+const supabaseUrl = 'https://vkfdmglnvzfxzrsjqrsk.supabase.co';
+const supabaseAnonKey = 'sb_publishable_bS8aznzQYGA9VQ-40t3W9w_t3VWXF5j';
 
-// Only initialize if we have a valid configuration to prevent "supabaseUrl is required" crash
-export const supabase = (supabaseUrl && supabaseAnonKey) 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : null;
-
-if (!supabase) {
-  console.warn("SatarkX: Supabase credentials not found. App is running in Local Mock Mode.");
-}
+// Initialize the Supabase client
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

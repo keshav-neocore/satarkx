@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy } from 'lucide-react';
@@ -88,10 +89,20 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
             <div className="space-y-4">
                 <div className="space-y-1"><label className="text-[9px] font-bold text-slate-400 ml-1">NAME</label><div className="flex items-center rounded-2xl px-4 py-3 bg-gray-50 border border-gray-100"><User size={16} className="text-mint-500 mr-3" /><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-transparent w-full outline-none font-bold text-sm text-slate-700" /></div></div>
                 <div className="space-y-1"><label className="text-[9px] font-bold text-slate-400 ml-1">EMAIL</label><div className="flex items-center rounded-2xl px-4 py-3 bg-gray-50 border border-gray-100"><Mail size={16} className="text-mint-500 mr-3" /><input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="bg-transparent w-full outline-none font-bold text-sm text-slate-700" /></div></div>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center ml-1">
+                    <label className="text-[9px] font-bold text-slate-400">MOBILE NUMBER</label>
+                    <span className="text-[8px] font-bold text-slate-400 opacity-60 bg-gray-100 px-1.5 py-0.5 rounded tracking-wide">OPTIONAL</span>
+                  </div>
+                  <div className="flex items-center rounded-2xl px-4 py-3 bg-gray-50 border border-gray-100">
+                    <Smartphone size={16} className="text-mint-500 mr-3" />
+                    <input type="tel" value={formData.mobile} onChange={(e) => setFormData({...formData, mobile: e.target.value})} className="bg-transparent w-full outline-none font-bold text-sm text-slate-700" placeholder="+91" />
+                  </div>
+                </div>
             </div>
         </div>
 
-        {/* App Settings (RESORED) */}
+        {/* App Settings */}
         <div className={`rounded-3xl p-6 border space-y-5 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Interface Preferences</h3>
             <div className="flex gap-4">
@@ -112,7 +123,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
             </div>
         </div>
 
-        {/* Avatar Creator Settings (RESTORED) */}
+        {/* Avatar Creator Settings */}
         <div className={`rounded-3xl p-6 border space-y-5 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100 shadow-sm'}`}>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Guardian Avatar Generator</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -160,8 +171,5 @@ const AvatarMenu = ({ onClose, onSelect }: { onClose: () => void, onSelect: (url
         </motion.div>
     </>
 );
-
-const Edit2 = ({ size, className }: { size: number, className?: string }) => <Edit2Icon size={size} className={className} />;
-import { Edit2 as Edit2Icon } from 'lucide-react';
 
 export default ProfileScreen;

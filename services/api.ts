@@ -1,10 +1,14 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { supabase } from "./supabase";
 
 export interface LoginResponse {
   id: string;
   username: string;
   email: string;
+}
+
+export interface SignUpResponse {
+    user?: LoginResponse;
+    confirmationRequired?: boolean;
 }
 
 export interface UserPreferences {
@@ -135,53 +139,207 @@ let MOCK_REWARDS: Reward[] = JSON.parse(localStorage.getItem('satarkx_mock_rewar
 const isSupabaseAvailable = !!supabase;
 const getActiveUserId = () => localStorage.getItem('satarkx_user_id') || 'guest_user';
 
-export const loginUser = async (username: string, email: string): Promise<LoginResponse> => {
-  const levelInfo = calculateLevelInfo(0);
-  if (isSupabaseAvailable && supabase) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert({ 
-        email, 
-        name: username,
-        level: levelInfo.title,
-        level_number: levelInfo.levelNumber,
-        current_points: 0,
-        max_points: levelInfo.nextLevelThreshold,
-        report_count: 0,
-        badges: levelInfo.badges,
-        avatar_type: 'preset',
-        gender: 'boy',
-        preset_id: username,
-        avatar_url: `https://avatar.iran.liara.run/public/boy?username=${username}`,
-        preferences: { theme: 'light', mapStyle: 'satellite' }
-      }, { onConflict: 'email' })
-      .select()
-      .single();
+// --- AUTHENTICATION ---
 
-    if (error) throw error;
-    localStorage.setItem('satarkx_user_id', data.id);
-    return { id: data.id, username: data.name, email: data.email };
+export const signUpUser = async (email: string, password: string, username: string): Promise<SignUpResponse> => {
+    if (isSupabaseAvailable && supabase) {
+        // 1. Create Auth User
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: { name: username }
+            }
+        });
+
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("Signup failed. No user returned.");
+
+        // Check if session is established (implies email verified or not required)
+        if (!authData.session) {
+             return { confirmationRequired: true };
+        }
+
+        // 2. Create Profile Entry
+        const levelInfo = calculateLevelInfo(0);
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+                id: authData.user.id,
+                email: email,
+                name: username,
+                level: levelInfo.title,
+                level_number: levelInfo.levelNumber,
+                current_points: 0,
+                max_points: levelInfo.nextLevelThreshold,
+                report_count: 0,
+                badges: levelInfo.badges,
+                avatar_type: 'preset',
+                gender: 'boy',
+                preset_id: username,
+                avatar_url: `https://avatar.iran.liara.run/public/boy?username=${username}`,
+                preferences: { theme: 'light', mapStyle: 'satellite' }
+            })
+            .select()
+            .single();
+        
+        if (profileError) {
+             console.error("Profile creation error (Full):", JSON.stringify(profileError, null, 2));
+             // If profile creation fails (e.g. RLS), we might still want to return the user but log the error
+             // Or throw. Let's throw for now as profile is essential.
+             throw new Error(`Profile creation failed: ${profileError.message || JSON.stringify(profileError)}`);
+        }
+
+        localStorage.setItem('satarkx_user_id', profileData.id);
+        return { user: { id: profileData.id, username: profileData.name, email: profileData.email } };
+
+    } else {
+        // --- MOCK SIGN UP IMPLEMENTATION ---
+        const mockId = btoa(email);
+        const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
+
+        if (existingUserStr) {
+            throw new Error("User already exists. Please Login.");
+        }
+
+        const levelInfo = calculateLevelInfo(0);
+        const mockUser: UserProfile = {
+            id: mockId,
+            name: username,
+            email: email,
+            level: levelInfo.title,
+            levelNumber: levelInfo.levelNumber,
+            currentPoints: 0,
+            maxPoints: levelInfo.nextLevelThreshold,
+            reportCount: 0,
+            badges: levelInfo.badges,
+            avatarUrl: `https://avatar.iran.liara.run/public/boy?username=${username}`,
+            avatarType: 'preset',
+            gender: 'boy',
+            presetId: username,
+            preferences: { theme: 'light', mapStyle: 'satellite' }
+        };
+
+        // Save User Profile
+        localStorage.setItem(`satarkx_profile_${mockId}`, JSON.stringify(mockUser));
+        // Save Password (Mock only)
+        localStorage.setItem(`satarkx_pass_${mockId}`, password);
+        
+        // Set Active Session
+        localStorage.setItem('satarkx_user_id', mockId);
+        
+        return { user: { id: mockId, username, email } };
+    }
+};
+
+export const loginUser = async (email: string, password: string, usernameFallback?: string): Promise<LoginResponse> => {
+  if (isSupabaseAvailable && supabase) {
+    // 1. Sign In
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+    });
+
+    if (authError) {
+        console.error("Login Error:", authError);
+        // Provide a more helpful error message for the common case
+        if (authError.message === 'Invalid login credentials') {
+            throw new Error("Invalid credentials. If you just signed up, please check your email for a verification link.");
+        }
+        throw authError;
+    }
+
+    if (!authData.user) throw new Error("Login failed");
+
+    // 2. Fetch Profile to confirm existence
+    const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+    
+    // Self-healing: If user exists in Auth but not in Profiles (e.g. from failed signup), create it now.
+    if (profileError || !profileData) {
+        console.warn("User has auth but no profile. Attempting to create profile...");
+        const levelInfo = calculateLevelInfo(0);
+        const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+                id: authData.user.id,
+                email: email,
+                name: usernameFallback || email.split('@')[0],
+                level: levelInfo.title,
+                level_number: levelInfo.levelNumber,
+                current_points: 0,
+                max_points: levelInfo.nextLevelThreshold,
+                report_count: 0,
+                badges: levelInfo.badges,
+                avatar_type: 'preset',
+                gender: 'boy',
+                preset_id: email.split('@')[0],
+                avatar_url: `https://avatar.iran.liara.run/public/boy?username=${email.split('@')[0]}`,
+                preferences: { theme: 'light', mapStyle: 'satellite' }
+            })
+            .select()
+            .single();
+        
+        if (createError) {
+             console.error("Failed to recover profile:", JSON.stringify(createError, null, 2));
+             // Don't throw here if we can't create profile, maybe return partial data or try guest?
+             // But actually, we need a profile.
+             throw new Error("User profile missing and could not be created.");
+        }
+        
+        localStorage.setItem('satarkx_user_id', newProfile.id);
+        return { id: newProfile.id, username: newProfile.name, email: newProfile.email };
+    }
+
+    localStorage.setItem('satarkx_user_id', profileData.id);
+    return { id: profileData.id, username: profileData.name, email: profileData.email };
+
   } else {
+    // --- MOCK LOGIN IMPLEMENTATION ---
     const mockId = btoa(email);
-    const mockUser: UserProfile = {
-      id: mockId,
-      name: username,
-      email: email,
-      level: levelInfo.title,
-      levelNumber: levelInfo.levelNumber,
-      currentPoints: 0,
-      maxPoints: levelInfo.nextLevelThreshold,
-      reportCount: 0,
-      badges: levelInfo.badges,
-      avatarUrl: `https://avatar.iran.liara.run/public/boy?username=${username}`,
-      avatarType: 'preset',
-      gender: 'boy',
-      presetId: username,
-      preferences: { theme: 'light', mapStyle: 'satellite' }
-    };
+    const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
+    
+    if (!existingUserStr) {
+        throw new Error("User not found. Please Sign Up.");
+    }
+
+    const storedPass = localStorage.getItem(`satarkx_pass_${mockId}`);
+    
+    // In mock mode, we check equality
+    if (!storedPass || storedPass !== password) {
+        throw new Error("Invalid password.");
+    }
+    
+    const user = JSON.parse(existingUserStr);
     localStorage.setItem('satarkx_user_id', mockId);
-    localStorage.setItem(`satarkx_profile_${mockId}`, JSON.stringify(mockUser));
-    return { id: mockId, username, email };
+    return { id: mockId, username: user.name, email: user.email };
+  }
+};
+
+export const resetUserPassword = async (email: string, newPassword: string): Promise<boolean> => {
+  if (isSupabaseAvailable && supabase) {
+      // For Supabase, we would typically trigger a reset email.
+      // supabase.auth.resetPasswordForEmail(email)
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+      });
+      if (error) throw error;
+      return true; // Email sent
+  } else {
+      // --- MOCK RESET IMPLEMENTATION ---
+      const mockId = btoa(email);
+      const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
+      
+      if (!existingUserStr) {
+          throw new Error("User with this email does not exist.");
+      }
+
+      // Update the password in local storage
+      localStorage.setItem(`satarkx_pass_${mockId}`, newPassword);
+      return true;
   }
 };
 
@@ -189,7 +347,58 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
   const userId = getActiveUserId();
   if (isSupabaseAvailable && supabase) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (error) throw error;
+    if (error) {
+        // Fallback for demo: If fetching fails, return a guest object to prevent crash
+        console.error("Error fetching profile:", JSON.stringify(error, null, 2));
+        
+        // Try to recover if it's just missing row but we have a session
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session && sessionData.session.user.id === userId) {
+             const levelInfo = calculateLevelInfo(0);
+             // Attempt to fix on the fly (Silent fix)
+             await supabase.from('profiles').insert({
+                id: userId,
+                email: sessionData.session.user.email || 'recovered@satarkx.in',
+                name: 'Recovered User',
+                level: levelInfo.title,
+                level_number: levelInfo.levelNumber,
+                current_points: 0,
+                max_points: levelInfo.nextLevelThreshold,
+                report_count: 0,
+                badges: levelInfo.badges,
+                avatar_type: 'preset',
+                gender: 'boy',
+                preset_id: 'Recovered',
+                avatar_url: `https://avatar.iran.liara.run/public/boy?username=Recovered`,
+                preferences: { theme: 'light', mapStyle: 'satellite' }
+            });
+             // Retry fetch once
+             const retry = await supabase.from('profiles').select('*').eq('id', userId).single();
+             if (retry.data) {
+                 const d = retry.data;
+                 return {
+                    id: d.id, name: d.name, email: d.email, mobile: d.mobile,
+                    level: d.level, levelNumber: d.level_number,
+                    currentPoints: d.current_points, maxPoints: d.max_points,
+                    reportCount: d.report_count || 0, badges: d.badges || [],
+                    avatarUrl: d.avatar_url, avatarType: d.avatar_type,
+                    gender: d.gender, presetId: d.preset_id, preferences: d.preferences
+                 };
+             }
+        }
+        
+        // Ultimate Fallback
+        const levelInfo = calculateLevelInfo(0);
+        return { 
+            name: 'Guest Explorer', email: 'guest@satarkx.in', 
+            level: levelInfo.title, levelNumber: levelInfo.levelNumber, 
+            currentPoints: 0, maxPoints: levelInfo.nextLevelThreshold, 
+            reportCount: 0, badges: levelInfo.badges, 
+            avatarType: 'preset', gender: 'boy', presetId: 'Guest', 
+            preferences: { theme: 'light', mapStyle: 'satellite' } 
+        };
+    }
+
     return {
       id: data.id,
       name: data.name,
@@ -210,8 +419,23 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
   } else {
     const data = localStorage.getItem(`satarkx_profile_${userId}`);
     if (data) return JSON.parse(data);
+    
+    // If no user found in local storage (e.g. fresh load or zombie ID), return a guest object
     const levelInfo = calculateLevelInfo(0);
-    return { name: 'Explorer', email: 'guest@satarkx.in', level: levelInfo.title, levelNumber: levelInfo.levelNumber, currentPoints: 0, maxPoints: levelInfo.nextLevelThreshold, reportCount: 0, badges: levelInfo.badges, avatarType: 'preset', gender: 'boy', presetId: 'Guest', preferences: { theme: 'light', mapStyle: 'satellite' } };
+    return { 
+        name: 'Guest Explorer', 
+        email: 'guest@satarkx.in', 
+        level: levelInfo.title, 
+        levelNumber: levelInfo.levelNumber, 
+        currentPoints: 0, 
+        maxPoints: levelInfo.nextLevelThreshold, 
+        reportCount: 0, 
+        badges: levelInfo.badges, 
+        avatarType: 'preset', 
+        gender: 'boy', 
+        presetId: 'Guest', 
+        preferences: { theme: 'light', mapStyle: 'satellite' } 
+    };
   }
 };
 
@@ -249,7 +473,10 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   } else {
     const current = await fetchUserProfile();
     const updated = { ...current, ...finalUpdates };
-    localStorage.setItem(`satarkx_profile_${userId}`, JSON.stringify(updated));
+    // Only save if it's a real user (not the guest fallback)
+    if (userId !== 'guest_user') {
+        localStorage.setItem(`satarkx_profile_${userId}`, JSON.stringify(updated));
+    }
     return updated;
   }
 };
@@ -257,16 +484,42 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
 export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<{ success: boolean; points_added: number }> => {
   const userId = getActiveUserId();
   const reportPoints = 100;
+  const mediaUrl = URL.createObjectURL(mediaBlob); // In a real app with Supabase Storage, upload first, then use that URL.
 
-  if (!isSupabaseAvailable) {
-    const newReport: Report = { id: Date.now().toString(), type: mediaType, url: URL.createObjectURL(mediaBlob), timestamp: new Date(), location: { lat, lng }, pointsEarned: reportPoints, status: 'Verified' };
-    MOCK_REPORTS.unshift(newReport);
-    localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
-    
-    for (let i = 0; i < 3; i++) {
-        MOCK_REWARDS.unshift({ id: `r_${Date.now()}_${i}`, status: 'unscratched', value: Math.floor(Math.random() * 50) + 10, type: 'points', timestamp: new Date() });
-    }
-    localStorage.setItem('satarkx_mock_rewards', JSON.stringify(MOCK_REWARDS));
+  if (isSupabaseAvailable && supabase) {
+      // 1. Insert Report into DB
+      const { error } = await supabase.from('reports').insert({
+          user_id: userId,
+          type: mediaType,
+          url: mediaUrl, // Note: This Blob URL is local-only. Real production needs Storage bucket upload.
+          location_lat: lat,
+          location_lng: lng,
+          points_earned: reportPoints,
+          status: 'Verified'
+      });
+      if (error) console.error("Report Insert Error:", JSON.stringify(error, null, 2));
+
+      // 2. Generate Rewards (Random chance)
+      const { error: rewardError } = await supabase.from('rewards').insert(
+          Array.from({ length: 3 }).map(() => ({
+              user_id: userId,
+              status: 'unscratched',
+              value: Math.floor(Math.random() * 50) + 10,
+              type: 'points'
+          }))
+      );
+      if (rewardError) console.error("Reward Gen Error:", JSON.stringify(rewardError, null, 2));
+
+  } else {
+      // Mock Fallback
+      const newReport: Report = { id: Date.now().toString(), type: mediaType, url: mediaUrl, timestamp: new Date(), location: { lat, lng }, pointsEarned: reportPoints, status: 'Verified' };
+      MOCK_REPORTS.unshift(newReport);
+      localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
+      
+      for (let i = 0; i < 3; i++) {
+          MOCK_REWARDS.unshift({ id: `r_${Date.now()}_${i}`, status: 'unscratched', value: Math.floor(Math.random() * 50) + 10, type: 'points', timestamp: new Date() });
+      }
+      localStorage.setItem('satarkx_mock_rewards', JSON.stringify(MOCK_REWARDS));
   }
 
   const profile = await fetchUserProfile();
@@ -278,10 +531,73 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
   return { success: true, points_added: reportPoints };
 };
 
-export const fetchUserReports = async (): Promise<Report[]> => MOCK_REPORTS;
-export const fetchUserRewards = async (): Promise<Reward[]> => MOCK_REWARDS;
+export const fetchUserReports = async (): Promise<Report[]> => {
+    if (isSupabaseAvailable && supabase) {
+        const { data, error } = await supabase
+            .from('reports')
+            .select('*')
+            .eq('user_id', getActiveUserId())
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error(JSON.stringify(error, null, 2));
+            return [];
+        }
+
+        return data.map((r: any) => ({
+            id: r.id,
+            type: r.type,
+            url: r.url,
+            timestamp: new Date(r.created_at),
+            location: { lat: r.location_lat, lng: r.location_lng },
+            pointsEarned: r.points_earned,
+            status: r.status
+        }));
+    }
+    return MOCK_REPORTS;
+};
+
+export const fetchUserRewards = async (): Promise<Reward[]> => {
+    if (isSupabaseAvailable && supabase) {
+        const { data, error } = await supabase
+            .from('rewards')
+            .select('*')
+            .eq('user_id', getActiveUserId())
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error(JSON.stringify(error, null, 2));
+            return [];
+        }
+        return data.map((r: any) => ({
+            ...r,
+            timestamp: new Date(r.created_at)
+        }));
+    }
+    return MOCK_REWARDS;
+};
 
 export const claimReward = async (rewardId: string): Promise<Reward> => {
+  if (isSupabaseAvailable && supabase) {
+      const { data, error } = await supabase
+        .from('rewards')
+        .update({ status: 'scratched' })
+        .eq('id', rewardId)
+        .select()
+        .single();
+      
+      if (error || !data) throw new Error("Failed to claim reward");
+
+      const reward = { ...data, timestamp: new Date(data.created_at) } as Reward;
+      
+      if (reward.type === 'points') {
+        const profile = await fetchUserProfile();
+        await updateUserProfile({ currentPoints: profile.currentPoints + reward.value });
+      }
+      return reward;
+  } 
+  
+  // Mock Fallback
   const reward = MOCK_REWARDS.find(r => r.id === rewardId);
   if (reward) {
     reward.status = 'scratched';
@@ -296,6 +612,9 @@ export const claimReward = async (rewardId: string): Promise<Reward> => {
 };
 
 export const fetchLeaderboard = async (): Promise<{ top3: LeaderboardUser[], nearby: LeaderboardUser[] }> => {
+    // Note: Implementing real leaderboard queries requires complex aggregation (SUM of points/reports).
+    // For now, we will stick to the mock data for the leaderboard display to keep the demo visual intact.
+    // In a real app, this would be a Supabase RPC function or a View.
     const names = ["Aaryan", "Priya", "Rahul", "Anjali", "Vikram", "Neha", "Arjun", "Kavya", "Siddharth", "Ishani", "Kabir", "Zara", "Yash", "Tanvi", "Rohan", "Sia", "Advait", "Myra"];
     const top3 = names.slice(0, 3).map((name, i) => ({
         id: `top_${i}`, name,
@@ -313,15 +632,35 @@ export const fetchLeaderboard = async (): Promise<{ top3: LeaderboardUser[], nea
 };
 
 export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> => {
-    const userHazards: Hazard[] = Array.from({ length: 3 }).map((_, i) => ({ 
-        id: `u_${i}`, 
-        lat: lat + (Math.random() - 0.5) * 0.01, 
-        lng: lng + (Math.random() - 0.5) * 0.01, 
-        type: 'User Report', 
-        title: 'Road Blockage',
-        severity: 'Warning',
-        source: 'User'
-    }));
+    let userHazards: Hazard[] = [];
+
+    if (isSupabaseAvailable && supabase) {
+        // Fetch real user reports as hazards
+        const { data } = await supabase.from('hazards').select('*');
+        if (data) {
+             userHazards = data.map((h: any) => ({
+                 id: h.id,
+                 lat: h.latitude,
+                 lng: h.longitude,
+                 type: h.type,
+                 title: h.title,
+                 severity: h.severity,
+                 source: h.source,
+                 description: h.description,
+                 confidence: h.confidence
+             }));
+        }
+    } else {
+         userHazards = Array.from({ length: 3 }).map((_, i) => ({ 
+            id: `u_${i}`, 
+            lat: lat + (Math.random() - 0.5) * 0.01, 
+            lng: lng + (Math.random() - 0.5) * 0.01, 
+            type: 'User Report', 
+            title: 'Road Blockage',
+            severity: 'Warning',
+            source: 'User'
+        }));
+    }
     
     const aiHazards = await fetchAIDetections(lat, lng);
     return [...userHazards, ...aiHazards];
