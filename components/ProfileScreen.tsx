@@ -22,10 +22,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getDiceBearUrl = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      let finalAvatarUrl = avatarType === 'preset' ? `https://avatar.iran.liara.run/public/${gender}?username=${presetId}` : customAvatarUrl;
+      let finalAvatarUrl = avatarType === 'preset' ? getDiceBearUrl(presetId) : customAvatarUrl;
       const updatedProfile = await updateUserProfile({
         name: formData.name, email: formData.email, mobile: formData.mobile,
         avatarType, gender, presetId, avatarUrl: finalAvatarUrl,
@@ -50,7 +52,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
             <div className="relative group cursor-pointer" onClick={() => setShowAvatarMenu(true)}>
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="absolute -inset-1.5 rounded-full bg-gradient-to-tr from-mint-400 via-accent-yellow to-mint-400 opacity-60 blur-md" />
                 <div className="w-32 h-32 rounded-full border-[5px] border-white overflow-hidden shadow-2xl bg-white relative z-10">
-                    <img src={avatarType === 'upload' ? customAvatarUrl : `https://avatar.iran.liara.run/public/${gender}?username=${presetId}`} alt="Avatar" className="w-full h-full object-cover" />
+                    <img src={avatarType === 'upload' ? customAvatarUrl : getDiceBearUrl(presetId)} alt="Avatar" className="w-full h-full object-cover" />
                 </div>
                 {latestBadge && (
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-1 -left-1 w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-mint-50 z-20">
@@ -128,19 +130,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Guardian Avatar Generator</h3>
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-400 ml-1">GENDER</label>
-                    <div className="flex p-1 bg-gray-100 rounded-xl">
-                        <button onClick={() => setGender('boy')} className={`flex-1 py-2 rounded-lg text-xs font-black ${gender === 'boy' ? 'bg-white text-blue-500' : 'text-slate-400'}`}>Boy</button>
-                        <button onClick={() => setGender('girl')} className={`flex-1 py-2 rounded-lg text-xs font-black ${gender === 'girl' ? 'bg-white text-pink-500' : 'text-slate-400'}`}>Girl</button>
-                    </div>
-                </div>
-                <div className="space-y-2">
                     <label className="text-[9px] font-bold text-slate-400 ml-1">PRESET ID</label>
                     <div className="flex items-center rounded-2xl px-4 py-2 bg-gray-50 border border-gray-100">
                         <input type="text" value={presetId} onChange={(e) => setPresetId(e.target.value)} className="bg-transparent w-full outline-none font-bold text-xs" />
                         <button onClick={() => setPresetId(Math.random().toString(36).substring(7))}><Dices size={14} className="text-mint-500 ml-2" /></button>
                     </div>
                 </div>
+                {/* Note: Gender specific generation is not strictly needed for this style but kept in state if we switch providers later */}
             </div>
             <p className="text-[9px] font-bold text-slate-400 italic">Avatar dynamically generated based on your Preset ID.</p>
         </div>

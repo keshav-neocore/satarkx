@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, Trophy, Bot } from 'lucide-react';
 import MapComponent from './MapComponent';
@@ -8,6 +8,7 @@ import FeedScreen from './FeedScreen';
 import RewardsScreen from './RewardsScreen';
 import ProfileHeaderButton from './ProfileHeaderButton';
 import { fetchUserProfile, fetchHazards, submitReport, fetchUserReports, UserProfile, Hazard, Report } from '../services/api';
+import { requestNotificationPermission, sendCriticalAlert, sendRewardNotification } from '../services/notifications';
 
 const HomeScreen: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -19,11 +20,18 @@ const HomeScreen: React.FC = () => {
   const [myReports, setMyReports] = useState<Report[]>([]);
   const [isAIScanning, setIsAIScanning] = useState(false);
   
+  // Notification Tracking
+  const notifiedHazardsRef = useRef<Set<string>>(new Set());
+
   // Map Style Local State
   const [viewMapStyle, setViewMapStyle] = useState<'simple' | 'satellite' | 'traffic'>('simple');
 
   useEffect(() => {
     loadData();
+    
+    // Request Notification Permission on Mount
+    requestNotificationPermission();
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -70,6 +78,14 @@ const HomeScreen: React.FC = () => {
   const refreshHazards = async (lat: number, lng: number) => {
     const h = await fetchHazards(lat, lng);
     setHazards(h);
+    
+    // Check for new critical hazards to notify
+    h.forEach(hazard => {
+        if (hazard.severity === 'Critical' && !notifiedHazardsRef.current.has(String(hazard.id))) {
+            sendCriticalAlert(hazard.title, hazard.description);
+            notifiedHazardsRef.current.add(String(hazard.id));
+        }
+    });
   };
 
   const loadData = async () => {
@@ -81,7 +97,13 @@ const HomeScreen: React.FC = () => {
     setShowCamera(false);
     setIsSubmitting(true);
     if (currentLocation) {
-        await submitReport(mediaBlob, currentLocation.lat, currentLocation.lng, type);
+        const result = await submitReport(mediaBlob, currentLocation.lat, currentLocation.lng, type);
+        
+        if (result.success) {
+            // Trigger Reward Notification
+            sendRewardNotification(result.points_added);
+        }
+
         await loadData();
         const reports = await fetchUserReports();
         setMyReports(reports);
