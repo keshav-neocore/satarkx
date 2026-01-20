@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Map as MapIcon, FileText, User as UserIcon, List, Zap, Clock, Trophy, Bot } from 'lucide-react';
+import { Camera, Map as MapIcon, User as UserIcon, List, Zap, Trophy, Bot, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import MapComponent from './MapComponent';
 import CameraModal from './CameraModal';
 import ProfileScreen from './ProfileScreen';
 import FeedScreen from './FeedScreen';
 import RewardsScreen from './RewardsScreen';
+import ReportsScreen from './ReportsScreen';
 import ProfileHeaderButton from './ProfileHeaderButton';
-import { fetchUserProfile, fetchHazards, submitReport, fetchUserReports, UserProfile, Hazard, Report } from '../services/api';
+import { fetchUserProfile, fetchHazards, submitReport, UserProfile, Hazard } from '../services/api';
 import { requestNotificationPermission, sendCriticalAlert, sendRewardNotification } from '../services/notifications';
 
 const HomeScreen: React.FC = () => {
@@ -17,8 +18,8 @@ const HomeScreen: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [myReports, setMyReports] = useState<Report[]>([]);
   const [isAIScanning, setIsAIScanning] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<'success' | 'error' | null>(null);
   
   // Notification Tracking
   const notifiedHazardsRef = useRef<Set<string>>(new Set());
@@ -55,6 +56,14 @@ const HomeScreen: React.FC = () => {
     }
   }, [user]);
 
+  // Auto-hide toast
+  useEffect(() => {
+      if(uploadStatus) {
+          const timer = setTimeout(() => setUploadStatus(null), 3000);
+          return () => clearTimeout(timer);
+      }
+  }, [uploadStatus]);
+
   // Periodic AI scanning simulation
   useEffect(() => {
     const interval = setInterval(() => {
@@ -68,12 +77,6 @@ const HomeScreen: React.FC = () => {
     }, 15000); // Scan every 15 seconds
     return () => clearInterval(interval);
   }, [currentLocation]);
-
-  useEffect(() => {
-    if (activeTab === 'Reports') {
-        fetchUserReports().then(setMyReports);
-    }
-  }, [activeTab]);
 
   const refreshHazards = async (lat: number, lng: number) => {
     const h = await fetchHazards(lat, lng);
@@ -97,17 +100,21 @@ const HomeScreen: React.FC = () => {
     setShowCamera(false);
     setIsSubmitting(true);
     if (currentLocation) {
-        const result = await submitReport(mediaBlob, currentLocation.lat, currentLocation.lng, type);
-        
-        if (result.success) {
-            // Trigger Reward Notification
-            sendRewardNotification(result.points_added);
+        try {
+            const result = await submitReport(mediaBlob, currentLocation.lat, currentLocation.lng, type);
+            
+            if (result.success) {
+                setUploadStatus('success');
+                // Trigger Reward Notification
+                sendRewardNotification(result.points_added);
+                await loadData();
+                refreshHazards(currentLocation.lat, currentLocation.lng);
+            } else {
+                setUploadStatus('error');
+            }
+        } catch (e) {
+            setUploadStatus('error');
         }
-
-        await loadData();
-        const reports = await fetchUserReports();
-        setMyReports(reports);
-        refreshHazards(currentLocation.lat, currentLocation.lng);
     }
     setIsSubmitting(false);
   };
@@ -175,20 +182,7 @@ const HomeScreen: React.FC = () => {
             </div>
         )}
         {activeTab === 'Feed' && <FeedScreen />}
-        {activeTab === 'Reports' && (
-            <div className="pt-6 px-4 pb-20 min-h-full">
-                <h2 className={`text-2xl font-bold mb-6 flex items-center gap-2 ${user.preferences.theme === 'dark' ? 'text-white' : 'text-slate-800'}`}><FileText className="text-mint-600" /> My Reports</h2>
-                {myReports.length === 0 ? <div className="flex flex-col items-center justify-center h-64 text-slate-400"><Camera size={48} className="mb-2 opacity-50" /><p>No reports yet. Start Snapping!</p></div> : 
-                <div className="grid grid-cols-1 gap-4">
-                    {myReports.map((report) => (
-                        <div key={report.id} className={`${user.preferences.theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-mint-100'} rounded-xl shadow-sm overflow-hidden border`}>
-                            <div className="relative h-48 bg-gray-900">{report.type === 'video' ? <video src={report.url} controls className="w-full h-full object-cover" /> : <img src={report.url} alt="Report" className="w-full h-full object-cover" />}<div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-md font-bold uppercase">{report.type}</div></div>
-                            <div className="p-4"><div className="flex justify-between items-start mb-2"><div><p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">{report.timestamp.toLocaleDateString()} • {report.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p><p className={`font-bold text-sm ${user.preferences.theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>Location: {report.location.lat.toFixed(4)}, {report.location.lng.toFixed(4)}</p></div><div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold"><Clock size={12} />{report.status}</div></div><div className="flex items-center gap-1 text-mint-600 font-bold text-sm mt-2"><Zap size={14} fill="currentColor" />+{report.pointsEarned} EcoPoints Earned</div></div>
-                        </div>
-                    ))}
-                </div>}
-            </div>
-        )}
+        {activeTab === 'Reports' && <ReportsScreen />}
         {activeTab === 'Rewards' && <RewardsScreen onPointsUpdated={loadData} />}
         {activeTab === 'Profile' && <ProfileScreen user={user} onUpdate={(u) => setUser(u)} />}
       </div>
@@ -205,14 +199,41 @@ const HomeScreen: React.FC = () => {
       <div className={`absolute bottom-0 left-0 right-0 shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-20 pb-safe pt-2 ${user.preferences.theme === 'dark' ? 'bg-slate-800 border-t border-slate-700' : 'bg-white'}`}>
          <div className="flex justify-around items-end pb-4">
             <NavIcon icon={MapIcon} label="Map" active={activeTab === 'Map'} onClick={() => setActiveTab('Map')} />
-            <NavIcon icon={List} label="Feed" active={activeTab === 'Feed'} onClick={() => setActiveTab('Feed')} />
             <NavIcon icon={FileText} label="Reports" active={activeTab === 'Reports'} onClick={() => setActiveTab('Reports')} />
+            <NavIcon icon={List} label="Feed" active={activeTab === 'Feed'} onClick={() => setActiveTab('Feed')} />
             <NavIcon icon={Trophy} label="Rewards" active={activeTab === 'Rewards'} onClick={() => setActiveTab('Rewards')} />
             <NavIcon icon={UserIcon} label="Profile" active={activeTab === 'Profile'} onClick={() => setActiveTab('Profile')} />
          </div>
       </div>
 
-      <AnimatePresence>{isSubmitting && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex flex-col items-center justify-center backdrop-blur-sm"><div className="bg-white p-6 rounded-2xl flex flex-col items-center shadow-xl"><div className="w-12 h-12 border-4 border-mint-500 border-t-transparent rounded-full animate-spin mb-4"></div><p className="font-bold text-mint-900">Sending Report...</p></div></motion.div>}</AnimatePresence>
+      <AnimatePresence>
+          {isSubmitting && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/50 flex flex-col items-center justify-center backdrop-blur-sm">
+                  <div className="bg-white p-6 rounded-2xl flex flex-col items-center shadow-xl">
+                      <div className="w-12 h-12 border-4 border-mint-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                      <p className="font-bold text-mint-900">Sending Report...</p>
+                  </div>
+              </motion.div>
+          )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+          {uploadStatus && (
+              <motion.div 
+                  initial={{ opacity: 0, y: -50 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -50 }} 
+                  className={`absolute top-20 left-6 right-6 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${uploadStatus === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+              >
+                  {uploadStatus === 'success' ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
+                  <div>
+                      <h4 className="font-black text-sm">{uploadStatus === 'success' ? 'Report Sent!' : 'Upload Failed'}</h4>
+                      <p className="text-xs opacity-80">{uploadStatus === 'success' ? 'Thanks for keeping India safe.' : 'Please check connection or try again.'}</p>
+                  </div>
+              </motion.div>
+          )}
+      </AnimatePresence>
+
       <AnimatePresence>{showCamera && <CameraModal onClose={() => setShowCamera(false)} onCapture={handleCapture} />}</AnimatePresence>
     </div>
   );

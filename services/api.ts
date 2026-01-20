@@ -62,6 +62,7 @@ export interface Hazard {
   source: 'User' | 'AI';
   description?: string;
   confidence?: number;
+  imageUrl?: string;
 }
 
 export interface Report {
@@ -140,6 +141,16 @@ const isSupabaseAvailable = !!supabase;
 const getActiveUserId = () => localStorage.getItem('satarkx_user_id') || 'guest_user';
 
 const getAvatarUrl = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+
+// Helper to convert Blob to Base64 (for reliable mock storage)
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 // --- AUTHENTICATION ---
 
@@ -322,11 +333,6 @@ export const loginUser = async (email: string, password: string, usernameFallbac
 
 export const resetUserPassword = async (email: string, newPassword: string): Promise<boolean> => {
   if (isSupabaseAvailable && supabase) {
-      // Note: resetPasswordForEmail usually triggers an email. Updating password directly requires an active session.
-      // For this demo, we assume the user is using the 'forgot password' flow which might just trigger the email.
-      // But if we want to UPDATE the password, we need updateUser.
-      // Standard flow: 1. resetPasswordForEmail -> 2. User clicks link -> 3. App handles recovery -> 4. updateUser({password})
-      // We'll trigger the email here.
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin
       });
@@ -348,12 +354,6 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (error || !data) {
         // Fallback for demo: If fetching fails, return a guest object to prevent crash
-        // Try to recover if session exists
-        const { data: sessionData } = await supabase.auth.getUser();
-        if (sessionData.user && sessionData.user.id === userId) {
-            // ... (Recovery logic omitted for brevity, rely on loginUser healing)
-        }
-        
         // Ultimate Fallback
         const levelInfo = calculateLevelInfo(0);
         return { 
@@ -362,6 +362,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
             currentPoints: 0, maxPoints: levelInfo.nextLevelThreshold, 
             reportCount: 0, badges: levelInfo.badges, 
             avatarType: 'preset', gender: 'boy', presetId: 'Guest', 
+            avatarUrl: getAvatarUrl('Guest'),
             preferences: { theme: 'light', mapStyle: 'satellite' } 
         };
     }
@@ -375,7 +376,14 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
     };
   } else {
     const data = localStorage.getItem(`satarkx_profile_${userId}`);
-    if (data) return JSON.parse(data);
+    if (data) {
+        const parsed = JSON.parse(data);
+        // Self-heal: If avatarUrl is missing (legacy data), add it
+        if (!parsed.avatarUrl) {
+            parsed.avatarUrl = getAvatarUrl(parsed.presetId || parsed.name || 'Guest');
+        }
+        return parsed;
+    }
     const levelInfo = calculateLevelInfo(0);
     return { 
         name: 'Guest Explorer', email: 'guest@satarkx.in', 
@@ -383,6 +391,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
         currentPoints: 0, maxPoints: levelInfo.nextLevelThreshold, 
         reportCount: 0, badges: levelInfo.badges, 
         avatarType: 'preset', gender: 'boy', presetId: 'Guest', 
+        avatarUrl: getAvatarUrl('Guest'), 
         preferences: { theme: 'light', mapStyle: 'satellite' } 
     };
   }
@@ -427,64 +436,91 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   }
 };
 
-export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<{ success: boolean; points_added: number }> => {
+export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<{ success: boolean; points_added: number; error?: string }> => {
   const reportPoints = 100;
-  const mediaUrl = URL.createObjectURL(mediaBlob);
   let sessionUserId: string | null = null;
+  let finalMediaUrl = ''; 
 
+  // --- SUPABASE UPLOAD FLOW ---
   if (isSupabaseAvailable && supabase) {
-      // CRITICAL FIX: Always fetch latest session ID for DB operations
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         sessionUserId = user.id;
+
+        try {
+            const timestamp = Date.now();
+            const fileExt = mediaType === 'video' ? 'webm' : 'jpg';
+            const fileName = `${sessionUserId}/${timestamp}.${fileExt}`;
+            const mimeType = mediaType === 'video' ? 'video/webm' : 'image/jpeg';
+
+            // IMPORTANT: Create a File object from Blob to ensure proper handling
+            const fileBody = new File([mediaBlob], `${timestamp}.${fileExt}`, { type: mimeType });
+
+            // Upload to 'satark-media' bucket
+            const { data, error: uploadError } = await supabase.storage
+                .from('satark-media') 
+                .upload(fileName, fileBody, {
+                    contentType: mimeType,
+                    cacheControl: '3600',
+                    upsert: false // Changed to false: We are creating a unique file. This avoids RLS check on Update.
+                });
+
+            if (uploadError) {
+                console.error("Storage Upload Error Details:", JSON.stringify(uploadError, null, 2));
+                throw new Error(uploadError.message);
+            } 
+            
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('satark-media') 
+                .getPublicUrl(fileName);
+            
+            console.log("Report Media Uploaded:", publicUrl);
+            finalMediaUrl = publicUrl;
+
+            // Database Insert
+            const { error: dbError } = await supabase.from('reports').insert({
+                user_id: sessionUserId,
+                type: mediaType,
+                url: finalMediaUrl,
+                location_lat: lat,
+                location_lng: lng,
+                points_earned: reportPoints,
+                status: 'Verified'
+            });
+            
+            if (dbError) {
+                console.error("Report DB Insert Error:", dbError);
+                throw new Error(dbError.message);
+            }
+
+            // Generate Rewards
+            await supabase.from('rewards').insert(
+                Array.from({ length: 3 }).map(() => ({
+                    user_id: sessionUserId,
+                    status: 'unscratched',
+                    value: Math.floor(Math.random() * 50) + 10,
+                    type: 'points'
+                }))
+            );
+
+        } catch (err: any) {
+            console.error("Supabase Operation Failed:", err.message);
+            // Fallback to Mock if Supabase fails (e.g. storage quota, net error)
+            console.warn("Falling back to local mock storage due to error.");
+            return submitMockReport(mediaBlob, lat, lng, mediaType);
+        }
+
       } else {
-        console.error("No active session found. Cannot submit report.");
-        return { success: false, points_added: 0 };
+        console.warn("No Supabase session found. Using Mock.");
+        return submitMockReport(mediaBlob, lat, lng, mediaType);
       }
-
-      // 1. Insert Report
-      const { error } = await supabase.from('reports').insert({
-          user_id: sessionUserId,
-          type: mediaType,
-          url: mediaUrl,
-          location_lat: lat,
-          location_lng: lng,
-          points_earned: reportPoints,
-          status: 'Verified'
-      });
-      
-      if (error) {
-          console.error("Report Insert Error:", JSON.stringify(error, null, 2));
-      }
-
-      // 2. Generate Rewards (Now safer with checked sessionUserId)
-      const { error: rewardError } = await supabase.from('rewards').insert(
-          Array.from({ length: 3 }).map(() => ({
-              user_id: sessionUserId, // Must match auth.uid()
-              status: 'unscratched',
-              value: Math.floor(Math.random() * 50) + 10,
-              type: 'points'
-          }))
-      );
-      
-      if (rewardError) {
-          console.error("Reward Gen Error:", JSON.stringify(rewardError, null, 2));
-          // We don't return failure here to keep the user experience smooth, 
-          // as the report itself might have succeeded.
-      }
-
   } else {
-      // Mock Fallback
-      const newReport: Report = { id: Date.now().toString(), type: mediaType, url: mediaUrl, timestamp: new Date(), location: { lat, lng }, pointsEarned: reportPoints, status: 'Verified' };
-      MOCK_REPORTS.unshift(newReport);
-      localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
-      
-      for (let i = 0; i < 3; i++) {
-          MOCK_REWARDS.unshift({ id: `r_${Date.now()}_${i}`, status: 'unscratched', value: Math.floor(Math.random() * 50) + 10, type: 'points', timestamp: new Date() });
-      }
-      localStorage.setItem('satarkx_mock_rewards', JSON.stringify(MOCK_REWARDS));
+      // --- MOCK FLOW (If Supabase not configured) ---
+      return submitMockReport(mediaBlob, lat, lng, mediaType);
   }
 
+  // Update Profile Points (Supabase)
   const profile = await fetchUserProfile();
   await updateUserProfile({ 
     currentPoints: profile.currentPoints + reportPoints,
@@ -494,10 +530,38 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
   return { success: true, points_added: reportPoints };
 };
 
+// Helper for Mock Submission
+const submitMockReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video'): Promise<{ success: boolean; points_added: number }> => {
+    let finalMediaUrl = '';
+    const reportPoints = 100;
+    try {
+        finalMediaUrl = await blobToBase64(mediaBlob);
+    } catch (e) {
+        finalMediaUrl = URL.createObjectURL(mediaBlob);
+    }
+
+    const newReport: Report = { id: Date.now().toString(), type: mediaType, url: finalMediaUrl, timestamp: new Date(), location: { lat, lng }, pointsEarned: reportPoints, status: 'Verified' };
+    MOCK_REPORTS.unshift(newReport);
+    localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
+    
+    for (let i = 0; i < 3; i++) {
+        MOCK_REWARDS.unshift({ id: `r_${Date.now()}_${i}`, status: 'unscratched', value: Math.floor(Math.random() * 50) + 10, type: 'points', timestamp: new Date() });
+    }
+    localStorage.setItem('satarkx_mock_rewards', JSON.stringify(MOCK_REWARDS));
+
+    // Update Local Profile
+    const profile = await fetchUserProfile();
+    await updateUserProfile({ 
+      currentPoints: profile.currentPoints + reportPoints,
+      reportCount: (profile.reportCount || 0) + 1
+    });
+
+    return { success: true, points_added: reportPoints };
+};
+
 export const fetchUserReports = async (): Promise<Report[]> => {
     let userId = getActiveUserId();
     if (isSupabaseAvailable && supabase) {
-        // Secure ID retrieval
         const { data: { user } } = await supabase.auth.getUser();
         if (user) userId = user.id;
 
@@ -528,7 +592,6 @@ export const fetchUserReports = async (): Promise<Report[]> => {
 export const fetchUserRewards = async (): Promise<Reward[]> => {
     let userId = getActiveUserId();
     if (isSupabaseAvailable && supabase) {
-        // Secure ID retrieval
         const { data: { user } } = await supabase.auth.getUser();
         if (user) userId = user.id;
 
@@ -564,7 +627,6 @@ export const claimReward = async (rewardId: string): Promise<Reward> => {
       return reward;
   } 
   
-  // Mock Fallback
   const reward = MOCK_REWARDS.find(r => r.id === rewardId);
   if (reward) {
     reward.status = 'scratched';
@@ -604,7 +666,8 @@ export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> 
              userHazards = data.map((h: any) => ({
                  id: h.id, lat: h.latitude, lng: h.longitude,
                  type: h.type, title: h.title, severity: h.severity,
-                 source: h.source, description: h.description, confidence: h.confidence
+                 source: h.source, description: h.description, confidence: h.confidence,
+                 imageUrl: h.image_url // Added image mapping
              }));
         }
     } else {

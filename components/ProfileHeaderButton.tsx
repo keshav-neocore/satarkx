@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, Sparkles } from 'lucide-react';
 import { UserProfile, BADGES } from '../services/api';
@@ -9,7 +9,8 @@ interface ProfileHeaderButtonProps {
 }
 
 const ProfileHeaderButton: React.FC<ProfileHeaderButtonProps> = ({ user, onPress }) => {
-  const hasAvatar = !!user?.avatarUrl;
+  const [imageError, setImageError] = useState(false);
+  const hasAvatar = !!user?.avatarUrl && !imageError;
   const latestBadgeId = user?.badges && user.badges.length > 0 ? user.badges[user.badges.length - 1] : null;
   const latestBadge = latestBadgeId ? BADGES.find(b => b.id === latestBadgeId) : null;
 
@@ -30,6 +31,7 @@ const ProfileHeaderButton: React.FC<ProfileHeaderButtonProps> = ({ user, onPress
             src={user.avatarUrl} 
             alt={user.name} 
             className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
           />
         ) : (
           <User size={20} className="text-mint-600" />

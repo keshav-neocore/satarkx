@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy } from 'lucide-react';
+import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy, Car } from 'lucide-react';
 import { UserProfile, updateUserProfile, BADGES } from '../services/api';
 import CameraModal from './CameraModal';
 
@@ -13,7 +13,7 @@ interface ProfileScreenProps {
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
   const [formData, setFormData] = useState({ name: user.name, email: user.email, mobile: user.mobile || '' });
   const [theme, setTheme] = useState<'light' | 'dark'>(user.preferences.theme);
-  const [mapStyle, setMapStyle] = useState<'simple' | 'satellite'>(user.preferences.mapStyle);
+  const [mapStyle, setMapStyle] = useState<'simple' | 'satellite' | 'traffic'>(user.preferences.mapStyle);
   const [avatarType, setAvatarType] = useState<'upload' | 'preset'>(user.avatarType);
   const [gender, setGender] = useState<'boy' | 'girl'>(user.gender);
   const [presetId, setPresetId] = useState<string>(user.presetId);
@@ -119,7 +119,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
                     <label className="text-[9px] font-bold text-slate-400 ml-1">MAP STYLE</label>
                     <div className="flex p-1 bg-gray-100 rounded-xl">
                         <button onClick={() => setMapStyle('simple')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'simple' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><Globe size={14} /> Simple</button>
-                        <button onClick={() => setMapStyle('satellite')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'satellite' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><MapIcon size={14} /> Satellite</button>
+                        <button onClick={() => setMapStyle('satellite')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'satellite' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><MapIcon size={14} /> Sat</button>
+                        <button onClick={() => setMapStyle('traffic')} className={`flex-1 flex items-center justify-center py-2 rounded-lg gap-1 text-xs font-black transition-all ${mapStyle === 'traffic' ? 'bg-white shadow-sm text-mint-600' : 'text-slate-400'}`}><Car size={14} /> Traffic</button>
                     </div>
                 </div>
             </div>
