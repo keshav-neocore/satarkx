@@ -732,6 +732,19 @@ export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> 
 };
 
 export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazard[]> => {
+    try {
+        // Attempt to fetch from local Python backend
+        const response = await fetch(`http://localhost:8000/ai/scan?lat=${lat}&lng=${lng}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        }
+    } catch (e) {
+        // Backend not running, fallback to mocks
+        console.warn("SatarkX AI Backend offline, using embedded simulation.");
+    }
+
+    // --- FALLBACK MOCK DATA ---
     const detections: Hazard[] = [];
     
     // 1. Guaranteed AI Detections for Demo
