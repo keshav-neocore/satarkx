@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink, AlertCircle, Bot, Zap } from 'lucide-react';
+import { BadgeCheck, Share2, MessageCircle, Heart, Volume2, VolumeX, Play, MoreHorizontal, ExternalLink, AlertCircle, Bot, Zap, BrainCircuit, ClockArrowUp } from 'lucide-react';
 import { FeedItemData } from '../services/api';
+import { motion } from 'framer-motion';
 
 const FeedItem: React.FC<{ item: FeedItemData }> = ({ item }) => {
   switch (item.type) {
@@ -13,39 +14,93 @@ const FeedItem: React.FC<{ item: FeedItemData }> = ({ item }) => {
   }
 };
 
-const AIAlertItem = ({ item }: { item: FeedItemData }) => (
-  <div className={`rounded-3xl p-5 shadow-lg border mb-5 relative overflow-hidden bg-gradient-to-br ${item.severity === 'Critical' ? 'from-red-50 to-white border-red-100' : 'from-orange-50 to-white border-orange-100'}`}>
-     <div className="absolute top-0 right-0 p-2 opacity-5">
-        <Bot size={80} />
-     </div>
-     <div className="flex justify-between items-start mb-3">
-        <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl shadow-sm ${item.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500'}`}>
-                <Bot size={20} className="text-white" />
+const AIAlertItem = ({ item }: { item: FeedItemData }) => {
+    const isPredictive = !!item.isPredictive;
+    const probability = item.probability || 0;
+
+    // Config for Predictive vs Standard AI Alert
+    const config = isPredictive 
+    ? {
+        bg: 'from-violet-50 to-white border-violet-100',
+        iconBg: 'bg-violet-600',
+        badge: 'bg-violet-100 text-violet-600 border-violet-200',
+        titleColor: 'text-violet-800',
+        label: 'Predictive Analysis',
+        icon: BrainCircuit,
+        subIcon: ClockArrowUp,
+        subIconColor: 'text-violet-400'
+      }
+    : {
+        bg: item.severity === 'Critical' ? 'from-red-50 to-white border-red-100' : 'from-orange-50 to-white border-orange-100',
+        iconBg: item.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500',
+        badge: item.severity === 'Critical' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-orange-100 text-orange-600 border-orange-200',
+        titleColor: 'text-slate-800',
+        label: 'SatarkX AI Detection',
+        icon: Bot,
+        subIcon: Zap,
+        subIconColor: 'text-yellow-500'
+      };
+
+    const MainIcon = config.icon;
+    const SubIcon = config.subIcon;
+
+    return (
+        <div className={`rounded-3xl p-5 shadow-lg border mb-5 relative overflow-hidden bg-gradient-to-br ${config.bg}`}>
+            <div className="absolute top-0 right-0 p-2 opacity-5">
+                <MainIcon size={80} />
             </div>
-            <div>
-                <div className="flex items-center gap-1">
-                    <h3 className="font-black text-slate-800 text-sm tracking-tight">SatarkX AI Detection</h3>
-                    <Zap size={12} className="text-yellow-500" fill="currentColor" />
+            
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-xl shadow-sm ${config.iconBg}`}>
+                        <MainIcon size={20} className="text-white" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-1">
+                            <h3 className={`font-black text-sm tracking-tight ${config.titleColor}`}>{config.label}</h3>
+                            <SubIcon size={12} className={config.subIconColor} fill={isPredictive ? "none" : "currentColor"} />
+                        </div>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{item.timestamp}</p>
+                    </div>
                 </div>
-                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{item.timestamp}</p>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${config.badge}`}>
+                    {item.severity}
+                </span>
+            </div>
+
+            <p className="text-slate-700 text-sm font-bold leading-relaxed mb-3">{item.content}</p>
+
+            {isPredictive && (
+                <div className="mb-4 bg-white/50 p-3 rounded-2xl border border-violet-100">
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-wide text-violet-800 mb-1">
+                        <span>Confidence Score</span>
+                        <span>{(probability * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                        <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${probability * 100}%` }}
+                            transition={{ duration: 1, delay: 0.2 }}
+                            className="h-full bg-gradient-to-r from-violet-400 to-violet-600"
+                        />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-2 font-semibold">
+                        Expected Impact: <span className="text-violet-700">{item.predictionTime}</span>
+                    </p>
+                </div>
+            )}
+
+            <div className="flex items-center gap-2">
+                <button className={`flex-1 text-white py-2 rounded-xl text-xs font-black active:scale-95 transition-transform ${isPredictive ? 'bg-violet-800' : 'bg-slate-800'}`}>
+                    {isPredictive ? 'VIEW ANALYSIS' : 'AVOID ROUTE'}
+                </button>
+                <button className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-black text-slate-500 active:scale-95 transition-transform">
+                    DISMISS
+                </button>
             </div>
         </div>
-        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${item.severity === 'Critical' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-orange-100 text-orange-600 border-orange-200'}`}>
-            {item.severity}
-        </span>
-    </div>
-    <p className="text-slate-700 text-sm font-bold leading-relaxed mb-4">{item.content}</p>
-    <div className="flex items-center gap-2">
-        <button className="flex-1 bg-slate-800 text-white py-2 rounded-xl text-xs font-black active:scale-95 transition-transform">
-            AVOID ROUTE
-        </button>
-        <button className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-black text-slate-500 active:scale-95 transition-transform">
-            DISMISS
-        </button>
-    </div>
-  </div>
-);
+    );
+};
 
 const NewsItem = ({ item }: { item: FeedItemData }) => (
   <div className="bg-white rounded-3xl p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 mb-5">

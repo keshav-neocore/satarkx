@@ -12,11 +12,16 @@ interface MapComponentProps {
   onMapStyleChange: (style: 'simple' | 'satellite' | 'traffic') => void;
 }
 
-const getHazardIconSvg = (isAI: boolean, color: string) => {
+const getHazardIconSvg = (isAI: boolean, isPredictive: boolean, color: string) => {
     // Basic SVG paths approximating Lucide icons
     const botPath = `<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>`;
     const alertPath = `<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>`;
-    const path = isAI ? botPath : alertPath;
+    // Brain/Sparkle path for predictive
+    const predictivePath = `<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>`;
+    
+    let path = alertPath;
+    if (isPredictive) path = predictivePath;
+    else if (isAI) path = botPath;
     
     return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 };
@@ -61,7 +66,6 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
         attribution: 'Esri'
       }).addTo(layerRef.current);
 
-      // Add labels overlay for better usability
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
       }).addTo(layerRef.current);
@@ -95,19 +99,28 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
 
     hazards.forEach(hazard => {
       const isAI = hazard.source === 'AI';
-      const severityColor = hazard.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500';
+      const isPredictive = !!hazard.isPredictive;
       
-      const iconHtml = getHazardIconSvg(isAI, 'white');
+      // Violet for Predictive, Red for Critical, Orange for Warning
+      let severityColor = hazard.severity === 'Critical' ? 'bg-red-600' : 'bg-orange-500';
+      if (isPredictive) severityColor = 'bg-violet-500';
+
+      const iconHtml = getHazardIconSvg(isAI, isPredictive, 'white');
+      
+      const pulseAnimation = isPredictive ? 'animate-ping duration-1000' : 'animate-ping';
 
       const hazardIcon = L.divIcon({
         className: 'custom-hazard-icon',
         html: `<div class="relative group">
-                ${isAI ? `<div class="absolute -inset-2 ${severityColor} rounded-full opacity-20 animate-ping"></div>` : ''}
+                ${isAI ? `<div class="absolute -inset-3 ${severityColor} rounded-full opacity-20 ${pulseAnimation}"></div>` : ''}
+                ${isPredictive ? `<div class="absolute -inset-1 border border-violet-400 rounded-full opacity-60 animate-spin" style="animation-duration: 3s"></div>` : ''}
                 <div class="w-10 h-10 ${severityColor} rounded-full flex items-center justify-center border-2 border-white shadow-md relative z-10">
                   ${iconHtml}
                 </div>
-                <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white px-2 py-1 rounded shadow-lg text-[10px] font-black whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                  <span class="${isAI ? 'text-purple-600' : 'text-slate-600'} uppercase">${isAI ? 'AI Detection' : 'User Report'}</span><br/>
+                <div class="absolute -bottom-12 left-1/2 -translate-x-1/2 bg-white px-2 py-1 rounded shadow-lg text-[10px] font-black whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                  <span class="${isPredictive ? 'text-violet-600' : (isAI ? 'text-purple-600' : 'text-slate-600')} uppercase">
+                     ${isPredictive ? 'Predictive Analysis' : (isAI ? 'AI Detection' : 'User Report')}
+                  </span><br/>
                   ${hazard.title}
                 </div>
                </div>`,
@@ -115,18 +128,61 @@ const MapComponent: React.FC<MapComponentProps> = ({ latitude, longitude, hazard
         iconAnchor: [20, 40]
       });
 
+      // Construct Rich Popup Content
+      let popupContent = '';
+
+      if (isPredictive) {
+           popupContent = `
+            <div class="font-sans p-1 min-w-[160px]">
+                <div class="flex items-center gap-1 mb-1">
+                    <span class="text-[8px] bg-violet-100 text-violet-700 px-1 rounded font-bold uppercase tracking-wide">Future Forecast</span>
+                </div>
+                <b class="text-sm block leading-tight text-violet-800">${hazard.title}</b>
+                <div class="w-full bg-gray-100 h-1 mt-1 mb-1 rounded-full overflow-hidden">
+                    <div class="bg-violet-500 h-full" style="width: ${(hazard.probability || 0) * 100}%"></div>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">${hazard.description}</p>
+                <p class="text-[9px] font-bold text-violet-600 mt-1">Expected: ${hazard.predictionTime}</p>
+            </div>`;
+      } else if (isAI) {
+           popupContent = `
+            <div class="font-sans p-1 min-w-[160px]">
+                <div class="flex items-center gap-1 mb-1">
+                    <span class="text-[8px] bg-purple-100 text-purple-700 px-1 rounded font-bold uppercase">AI ANALYZED</span>
+                </div>
+                <b class="text-sm block leading-tight text-slate-800">${hazard.title}</b>
+                <p class="text-xs text-slate-500 mt-1">${hazard.description}</p>
+            </div>`;
+      } else {
+           // User Report with Image and Author
+           popupContent = `
+            <div class="font-sans min-w-[180px]">
+                ${hazard.imageUrl ? `<div class="w-full h-24 bg-gray-100 rounded-lg overflow-hidden mb-2 relative">
+                    <img src="${hazard.imageUrl}" class="w-full h-full object-cover" />
+                    <div class="absolute bottom-1 right-1 bg-black/60 text-white text-[8px] px-1 rounded font-bold">LIVE SNAP</div>
+                </div>` : ''}
+                
+                ${hazard.authorName ? `
+                <div class="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
+                    <img src="${hazard.authorAvatar || 'https://api.dicebear.com/9.x/adventurer/svg?seed=fallback'}" class="w-6 h-6 rounded-full bg-gray-100 border border-gray-200" />
+                    <div>
+                        <p class="text-xs font-bold text-slate-800 leading-none">${hazard.authorName}</p>
+                        <p class="text-[9px] text-mint-600 font-bold leading-none mt-0.5">Level ${hazard.authorLevel} Guardian</p>
+                    </div>
+                </div>` : ''}
+
+                <div class="flex items-center gap-1 mb-0.5">
+                   <span class="text-[9px] ${hazard.severity === 'Critical' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'} px-1 rounded font-bold uppercase">${hazard.severity}</span>
+                   <span class="text-[9px] text-slate-400 font-bold">${hazard.reportTime || 'Just now'}</span>
+                </div>
+                <b class="text-sm block leading-tight text-slate-800">${hazard.title}</b>
+                <p class="text-xs text-slate-500 mt-0.5">${hazard.description}</p>
+            </div>`;
+      }
+
       const marker = L.marker([hazard.lat, hazard.lng], { icon: hazardIcon })
         .addTo(mapInstance.current!)
-        .bindPopup(`
-          <div class="font-sans p-1">
-            <div class="flex items-center gap-1 mb-1">
-              ${isAI ? '<span class="text-[8px] bg-purple-100 text-purple-700 px-1 rounded font-bold">AI ANALYZED</span>' : ''}
-              <span class="text-[8px] font-bold uppercase ${hazard.severity === 'Critical' ? 'text-red-600' : 'text-orange-600'}">${hazard.severity}</span>
-            </div>
-            <b class="text-sm block">${hazard.title}</b>
-            <p class="text-xs text-slate-500 mt-1">${hazard.description || hazard.type}</p>
-          </div>
-        `);
+        .bindPopup(popupContent);
       
       markersRef.current.push(marker);
     });

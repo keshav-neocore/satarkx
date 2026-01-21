@@ -63,6 +63,15 @@ export interface Hazard {
   description?: string;
   confidence?: number;
   imageUrl?: string;
+  // Predictive Features
+  isPredictive?: boolean;
+  predictionTime?: string; // e.g. "in 2 hours"
+  probability?: number; // 0 to 1
+  // Author Details for User Reports
+  authorName?: string;
+  authorLevel?: number;
+  authorAvatar?: string;
+  reportTime?: string;
 }
 
 export interface Report {
@@ -95,6 +104,10 @@ export interface FeedItemData {
   likes?: number;
   videoUrl?: string;
   severity?: 'Critical' | 'Warning' | 'Advisory';
+  // Predictive Features for Feed
+  isPredictive?: boolean;
+  probability?: number;
+  predictionTime?: string;
 }
 
 export const BADGES: Badge[] = [
@@ -170,12 +183,10 @@ export const signUpUser = async (email: string, password: string, username: stri
         if (authError) throw authError;
         if (!authData.user) throw new Error("Signup failed. No user returned.");
 
-        // Check if session is established (implies email verified or not required)
         if (!authData.session) {
              return { confirmationRequired: true };
         }
 
-        // 2. Create Profile Entry
         const levelInfo = calculateLevelInfo(0);
         const { data: profileData, error: profileError } = await supabase
             .from('profiles')
@@ -200,14 +211,12 @@ export const signUpUser = async (email: string, password: string, username: stri
         
         if (profileError) {
              console.error("Profile creation error (Full):", JSON.stringify(profileError, null, 2));
-             // Don't throw here to allow login, but log it. Logic in loginUser handles missing profile.
         }
 
         localStorage.setItem('satarkx_user_id', authData.user.id);
         return { user: { id: authData.user.id, username, email } };
 
     } else {
-        // --- MOCK SIGN UP IMPLEMENTATION ---
         const mockId = btoa(email);
         const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
 
@@ -233,12 +242,8 @@ export const signUpUser = async (email: string, password: string, username: stri
             preferences: { theme: 'light', mapStyle: 'satellite' }
         };
 
-        // Save User Profile
         localStorage.setItem(`satarkx_profile_${mockId}`, JSON.stringify(mockUser));
-        // Save Password (Mock only)
         localStorage.setItem(`satarkx_pass_${mockId}`, password);
-        
-        // Set Active Session
         localStorage.setItem('satarkx_user_id', mockId);
         
         return { user: { id: mockId, username, email } };
@@ -247,14 +252,12 @@ export const signUpUser = async (email: string, password: string, username: stri
 
 export const loginUser = async (email: string, password: string, usernameFallback?: string): Promise<LoginResponse> => {
   if (isSupabaseAvailable && supabase) {
-    // 1. Sign In
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
     });
 
     if (authError) {
-        console.error("Login Error:", authError);
         if (authError.message === 'Invalid login credentials') {
             throw new Error("Invalid credentials. If you just signed up, please check your email for a verification link.");
         }
@@ -263,14 +266,12 @@ export const loginUser = async (email: string, password: string, usernameFallbac
 
     if (!authData.user) throw new Error("Login failed");
 
-    // 2. Fetch Profile to confirm existence
     const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
         .single();
     
-    // Self-healing: If user exists in Auth but not in Profiles (e.g. from failed signup), create it now.
     if (profileError || !profileData) {
         console.warn("User has auth but no profile. Attempting to create profile...");
         const levelInfo = calculateLevelInfo(0);
@@ -297,8 +298,6 @@ export const loginUser = async (email: string, password: string, usernameFallbac
             .single();
         
         if (createError) {
-             console.error("Failed to recover profile:", JSON.stringify(createError, null, 2));
-             // Proceed anyway, HomeScreen will try to fetch and maybe use fallback
              localStorage.setItem('satarkx_user_id', authData.user.id);
              return { id: authData.user.id, username: "Explorer", email };
         }
@@ -311,7 +310,6 @@ export const loginUser = async (email: string, password: string, usernameFallbac
     return { id: profileData.id, username: profileData.name, email: profileData.email };
 
   } else {
-    // --- MOCK LOGIN IMPLEMENTATION ---
     const mockId = btoa(email);
     const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
     
@@ -339,7 +337,6 @@ export const resetUserPassword = async (email: string, newPassword: string): Pro
       if (error) throw error;
       return true;
   } else {
-      // --- MOCK RESET IMPLEMENTATION ---
       const mockId = btoa(email);
       const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
       if (!existingUserStr) throw new Error("User with this email does not exist.");
@@ -353,8 +350,6 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
   if (isSupabaseAvailable && supabase) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (error || !data) {
-        // Fallback for demo: If fetching fails, return a guest object to prevent crash
-        // Ultimate Fallback
         const levelInfo = calculateLevelInfo(0);
         return { 
             name: 'Guest Explorer', email: 'guest@satarkx.in', 
@@ -378,7 +373,6 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
     const data = localStorage.getItem(`satarkx_profile_${userId}`);
     if (data) {
         const parsed = JSON.parse(data);
-        // Self-heal: If avatarUrl is missing (legacy data), add it
         if (!parsed.avatarUrl) {
             parsed.avatarUrl = getAvatarUrl(parsed.presetId || parsed.name || 'Guest');
         }
@@ -436,12 +430,30 @@ export const updateUserProfile = async (updates: Partial<UserProfile>): Promise<
   }
 };
 
-export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<{ success: boolean; points_added: number; error?: string }> => {
+interface ReportResult {
+  success: boolean;
+  points_added: number;
+  error?: string;
+  impact?: {
+    accuracy: string;
+    timeSaved: string;
+    reduction: string;
+  };
+}
+
+export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video' = 'image'): Promise<ReportResult> => {
   const reportPoints = 100;
+  
+  // Simulated Impact Stats
+  const impact = {
+    accuracy: '>95%',
+    timeSaved: '12m 30s',
+    reduction: '15%'
+  };
+
   let sessionUserId: string | null = null;
   let finalMediaUrl = ''; 
 
-  // --- SUPABASE UPLOAD FLOW ---
   if (isSupabaseAvailable && supabase) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -453,16 +465,14 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
             const fileName = `${sessionUserId}/${timestamp}.${fileExt}`;
             const mimeType = mediaType === 'video' ? 'video/webm' : 'image/jpeg';
 
-            // IMPORTANT: Create a File object from Blob to ensure proper handling
             const fileBody = new File([mediaBlob], `${timestamp}.${fileExt}`, { type: mimeType });
 
-            // Upload to 'satark-media' bucket
             const { data, error: uploadError } = await supabase.storage
                 .from('satark-media') 
                 .upload(fileName, fileBody, {
                     contentType: mimeType,
                     cacheControl: '3600',
-                    upsert: false // Changed to false: We are creating a unique file. This avoids RLS check on Update.
+                    upsert: false
                 });
 
             if (uploadError) {
@@ -470,15 +480,12 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
                 throw new Error(uploadError.message);
             } 
             
-            // Get public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('satark-media') 
                 .getPublicUrl(fileName);
             
-            console.log("Report Media Uploaded:", publicUrl);
             finalMediaUrl = publicUrl;
 
-            // Database Insert
             const { error: dbError } = await supabase.from('reports').insert({
                 user_id: sessionUserId,
                 type: mediaType,
@@ -489,12 +496,8 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
                 status: 'Verified'
             });
             
-            if (dbError) {
-                console.error("Report DB Insert Error:", dbError);
-                throw new Error(dbError.message);
-            }
+            if (dbError) throw new Error(dbError.message);
 
-            // Generate Rewards
             await supabase.from('rewards').insert(
                 Array.from({ length: 3 }).map(() => ({
                     user_id: sessionUserId,
@@ -505,33 +508,27 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
             );
 
         } catch (err: any) {
-            console.error("Supabase Operation Failed:", err.message);
-            // Fallback to Mock if Supabase fails (e.g. storage quota, net error)
             console.warn("Falling back to local mock storage due to error.");
             return submitMockReport(mediaBlob, lat, lng, mediaType);
         }
 
       } else {
-        console.warn("No Supabase session found. Using Mock.");
         return submitMockReport(mediaBlob, lat, lng, mediaType);
       }
   } else {
-      // --- MOCK FLOW (If Supabase not configured) ---
       return submitMockReport(mediaBlob, lat, lng, mediaType);
   }
 
-  // Update Profile Points (Supabase)
   const profile = await fetchUserProfile();
   await updateUserProfile({ 
     currentPoints: profile.currentPoints + reportPoints,
     reportCount: (profile.reportCount || 0) + 1
   });
 
-  return { success: true, points_added: reportPoints };
+  return { success: true, points_added: reportPoints, impact };
 };
 
-// Helper for Mock Submission
-const submitMockReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video'): Promise<{ success: boolean; points_added: number }> => {
+const submitMockReport = async (mediaBlob: Blob, lat: number, lng: number, mediaType: 'image' | 'video'): Promise<ReportResult> => {
     let finalMediaUrl = '';
     const reportPoints = 100;
     try {
@@ -549,14 +546,21 @@ const submitMockReport = async (mediaBlob: Blob, lat: number, lng: number, media
     }
     localStorage.setItem('satarkx_mock_rewards', JSON.stringify(MOCK_REWARDS));
 
-    // Update Local Profile
     const profile = await fetchUserProfile();
     await updateUserProfile({ 
       currentPoints: profile.currentPoints + reportPoints,
       reportCount: (profile.reportCount || 0) + 1
     });
 
-    return { success: true, points_added: reportPoints };
+    return { 
+        success: true, 
+        points_added: reportPoints,
+        impact: {
+            accuracy: '>95%',
+            timeSaved: '14m 20s',
+            reduction: '15%'
+        }
+    };
 };
 
 export const fetchUserReports = async (): Promise<Report[]> => {
@@ -571,10 +575,7 @@ export const fetchUserReports = async (): Promise<Report[]> => {
             .eq('user_id', userId)
             .order('created_at', { ascending: false });
         
-        if (error) {
-            console.error(JSON.stringify(error, null, 2));
-            return [];
-        }
+        if (error) return [];
 
         return data.map((r: any) => ({
             id: r.id,
@@ -662,19 +663,55 @@ export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> 
 
     if (isSupabaseAvailable && supabase) {
         const { data } = await supabase.from('hazards').select('*');
-        if (data) {
+        if (data && data.length > 0) {
              userHazards = data.map((h: any) => ({
                  id: h.id, lat: h.latitude, lng: h.longitude,
                  type: h.type, title: h.title, severity: h.severity,
                  source: h.source, description: h.description, confidence: h.confidence,
-                 imageUrl: h.image_url // Added image mapping
+                 imageUrl: h.image_url 
              }));
         }
-    } else {
-         userHazards = Array.from({ length: 3 }).map((_, i) => ({ 
-            id: `u_${i}`, lat: lat + (Math.random() - 0.5) * 0.01, lng: lng + (Math.random() - 0.5) * 0.01, 
-            type: 'User Report', title: 'Road Blockage', severity: 'Warning', source: 'User'
-        }));
+    } 
+    
+    // If no real data (or mock mode), generate diverse random user reports with images and authors
+    if (userHazards.length === 0) {
+         
+         const mockUsers = [
+             { name: 'Rohan_K', level: 4, avatar: getAvatarUrl('Rohan_K') },
+             { name: 'Priya.S', level: 3, avatar: getAvatarUrl('Priya.S') },
+             { name: 'Amit_99', level: 5, avatar: getAvatarUrl('Amit_99') },
+             { name: 'Zara_X', level: 2, avatar: getAvatarUrl('Zara_X') },
+             { name: 'Dev_G', level: 4, avatar: getAvatarUrl('Dev_G') }
+         ];
+
+         const reportTypes = [
+             { title: 'Deep Pothole', type: 'Road Damage', severity: 'Warning', desc: 'Large pothole in the middle lane.', img: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=400' },
+             { title: 'Broken Signal', type: 'Infrastructure', severity: 'Critical', desc: 'Signal stuck on red, causing chaos.', img: 'https://images.unsplash.com/photo-1569429569766-3d2b638a5369?auto=format&fit=crop&q=80&w=400' },
+             { title: 'Construction Debris', type: 'Obstruction', severity: 'Advisory', desc: 'Sand and bricks on the side.', img: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&q=80&w=400' },
+             { title: 'Water Leakage', type: 'Civic Issue', severity: 'Advisory', desc: 'Pipeline burst leaking clean water.', img: 'https://images.unsplash.com/photo-1524143878564-8833b288a442?auto=format&fit=crop&q=80&w=400' },
+             { title: 'Stray Cattle', type: 'Hazard', severity: 'Warning', desc: 'Herd blocking the turn.', img: 'https://images.unsplash.com/photo-1541625602330-2277a4c46182?auto=format&fit=crop&q=80&w=400' },
+             { title: 'Traffic Gridlock', type: 'Road Hazard', severity: 'Warning', desc: 'Stuck for 20 mins.', img: 'https://images.unsplash.com/photo-1566236402446-55938d813470?auto=format&fit=crop&q=80&w=400' }
+         ];
+
+         userHazards = Array.from({ length: 5 }).map((_, i) => {
+            const template = reportTypes[Math.floor(Math.random() * reportTypes.length)];
+            const user = mockUsers[Math.floor(Math.random() * mockUsers.length)];
+            return { 
+                id: `u_mock_${i}_${Date.now()}`, 
+                lat: lat + (Math.random() - 0.5) * 0.008, 
+                lng: lng + (Math.random() - 0.5) * 0.008, 
+                type: template.type, 
+                title: template.title, 
+                severity: template.severity as any, 
+                source: 'User',
+                description: template.desc,
+                imageUrl: template.img,
+                authorName: user.name,
+                authorLevel: user.level,
+                authorAvatar: user.avatar,
+                reportTime: `${Math.floor(Math.random() * 50) + 2}m ago`
+            };
+        });
     }
     
     const aiHazards = await fetchAIDetections(lat, lng);
@@ -683,31 +720,56 @@ export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> 
 
 export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazard[]> => {
     const detections: Hazard[] = [];
-    const rainIntensity = Math.random() * 100; 
-    const trafficSpeed = Math.random() * 80; 
-    const isCameraObstacle = Math.random() < 0.15;
+    
+    // 1. Guaranteed AI Detections for Demo
+    detections.push({
+        id: `ai_traffic_${Date.now()}`, 
+        lat: lat + 0.003, 
+        lng: lng - 0.002,
+        type: 'Traffic', title: 'Heavy Congestion', severity: 'Warning', source: 'AI',
+        description: "Traffic moving at <10km/h. High volume detected.", confidence: 0.95
+    });
 
-    if (rainIntensity > 50 && trafficSpeed < 10) {
-        detections.push({
-            id: `ai_ff_${Date.now()}`, lat: lat + 0.005, lng: lng + 0.005,
-            type: 'Flash Flood', title: 'Critical Flood Risk', severity: 'Critical', source: 'AI',
-            description: `Extreme rain (${rainIntensity.toFixed(0)}mm/hr) & stopped traffic detected.`, confidence: 0.92
-        });
-    }
+    detections.push({
+        id: `ai_weather_${Date.now()}`, 
+        lat: lat - 0.004, 
+        lng: lng + 0.003,
+        type: 'Weather', title: 'Low Visibility', severity: 'Advisory', source: 'AI',
+        description: "Fog density increasing. Visibility < 50m.", confidence: 0.88
+    });
 
-    if (trafficSpeed < 5 && rainIntensity < 5) {
-        detections.push({
-            id: `ai_acc_${Date.now()}`, lat: lat - 0.004, lng: lng + 0.002,
-            type: 'Accident/Blockage', title: 'Potential Accident', severity: 'Warning', source: 'AI',
-            description: "Stationary traffic under clear skies suggests a road blockage.", confidence: 0.78
-        });
-    }
+    // 2. Predictive Hazards (Future)
+    // Add distinct predictive hazards scattered
+    detections.push({
+        id: `ai_pred_1_${Date.now()}`, 
+        lat: lat + 0.006, 
+        lng: lng + 0.004,
+        type: 'Predictive', title: 'Waterlogging Risk', severity: 'Warning', source: 'AI',
+        description: "Drainage topology + Rain Forecast.", 
+        confidence: 0.82,
+        isPredictive: true,
+        predictionTime: "in 1 hr",
+        probability: 0.85
+    });
 
-    if (isCameraObstacle) {
+    detections.push({
+        id: `ai_pred_2_${Date.now()}`, 
+        lat: lat - 0.005, 
+        lng: lng - 0.005,
+        type: 'Predictive', title: 'Gridlock Forecast', severity: 'Critical', source: 'AI',
+        description: "Protest march route intersects here.", 
+        confidence: 0.75,
+        isPredictive: true,
+        predictionTime: "in 30 mins",
+        probability: 0.92
+    });
+
+    // 3. Random Chance Hazards
+    if (Math.random() > 0.5) {
         detections.push({
-            id: `ai_vis_${Date.now()}`, lat: lat + (Math.random() - 0.5) * 0.005, lng: lng + (Math.random() - 0.5) * 0.005,
-            type: 'Visual Hazard', title: 'AI Visual Alert', severity: 'Critical', source: 'AI',
-            description: "CV Model confirmed an obstacle via live camera feed analysis.", confidence: 0.98
+            id: `ai_acc_${Date.now()}`, lat: lat + 0.001, lng: lng + 0.001,
+            type: 'Accident', title: 'Vehicle Breakdown', severity: 'Warning', source: 'AI',
+            description: "Stationary vehicle detected on flyover.", confidence: 0.89
         });
     }
 
@@ -716,10 +778,20 @@ export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazar
 
 export const fetchLivePulseFeed = async (lat: number, lng: number): Promise<FeedItemData[]> => {
     const detections = await fetchAIDetections(lat, lng);
+    
     const aiFeedItems: FeedItemData[] = detections.map(d => ({
-        id: String(d.id), type: 'ai_alert', author: 'SatarkX AI Engine',
+        id: String(d.id), 
+        type: 'ai_alert', 
+        author: 'SatarkX AI Engine',
         avatar: getAvatarUrl('AI'),
-        content: d.description || d.title, timestamp: 'Just Now', verified: true, severity: d.severity
+        content: d.description || d.title, 
+        timestamp: d.isPredictive ? 'Future Forecast' : 'Just Now', 
+        verified: true, 
+        severity: d.severity,
+        // Pass predictive props
+        isPredictive: d.isPredictive,
+        probability: d.probability,
+        predictionTime: d.predictionTime
     }));
 
     const standardFeed: FeedItemData[] = [

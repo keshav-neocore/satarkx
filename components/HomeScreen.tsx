@@ -8,6 +8,7 @@ import FeedScreen from './FeedScreen';
 import RewardsScreen from './RewardsScreen';
 import ReportsScreen from './ReportsScreen';
 import ProfileHeaderButton from './ProfileHeaderButton';
+import NetworkSimulationModal from './NetworkSimulationModal';
 import { fetchUserProfile, fetchHazards, submitReport, UserProfile, Hazard } from '../services/api';
 import { requestNotificationPermission, sendCriticalAlert, sendRewardNotification } from '../services/notifications';
 
@@ -20,6 +21,9 @@ const HomeScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAIScanning, setIsAIScanning] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'success' | 'error' | null>(null);
+  const [showNetworkSim, setShowNetworkSim] = useState(false);
+  const [simStats, setSimStats] = useState({ accuracy: '>95%', timeSaved: '15m', reduction: '10%' });
+  const [pendingPoints, setPendingPoints] = useState(0);
   
   // Notification Tracking
   const notifiedHazardsRef = useRef<Set<string>>(new Set());
@@ -104,11 +108,13 @@ const HomeScreen: React.FC = () => {
             const result = await submitReport(mediaBlob, currentLocation.lat, currentLocation.lng, type);
             
             if (result.success) {
-                setUploadStatus('success');
-                // Trigger Reward Notification
-                sendRewardNotification(result.points_added);
-                await loadData();
-                refreshHazards(currentLocation.lat, currentLocation.lng);
+                // Instead of immediate success, trigger simulation
+                if (result.impact) {
+                    setSimStats(result.impact);
+                }
+                setPendingPoints(result.points_added);
+                setShowNetworkSim(true);
+                
             } else {
                 setUploadStatus('error');
             }
@@ -117,6 +123,14 @@ const HomeScreen: React.FC = () => {
         }
     }
     setIsSubmitting(false);
+  };
+
+  const handleSimComplete = async () => {
+      setShowNetworkSim(false);
+      setUploadStatus('success');
+      sendRewardNotification(pendingPoints);
+      await loadData();
+      if(currentLocation) refreshHazards(currentLocation.lat, currentLocation.lng);
   };
 
   if (!user || !currentLocation) {
@@ -218,6 +232,15 @@ const HomeScreen: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
+          {showNetworkSim && (
+              <NetworkSimulationModal 
+                 onComplete={handleSimComplete} 
+                 stats={simStats}
+              />
+          )}
+      </AnimatePresence>
+
+      <AnimatePresence>
           {uploadStatus && (
               <motion.div 
                   initial={{ opacity: 0, y: -50 }} 
@@ -227,8 +250,8 @@ const HomeScreen: React.FC = () => {
               >
                   {uploadStatus === 'success' ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
                   <div>
-                      <h4 className="font-black text-sm">{uploadStatus === 'success' ? 'Report Sent!' : 'Upload Failed'}</h4>
-                      <p className="text-xs opacity-80">{uploadStatus === 'success' ? 'Thanks for keeping India safe.' : 'Please check connection or try again.'}</p>
+                      <h4 className="font-black text-sm">{uploadStatus === 'success' ? 'Report Verified!' : 'Upload Failed'}</h4>
+                      <p className="text-xs opacity-80">{uploadStatus === 'success' ? 'Authorities & Navigation Apps Notified.' : 'Please check connection or try again.'}</p>
                   </div>
               </motion.div>
           )}

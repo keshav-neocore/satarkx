@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy, Car } from 'lucide-react';
+import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy, Car, FileText } from 'lucide-react';
 import { UserProfile, updateUserProfile, BADGES } from '../services/api';
 import CameraModal from './CameraModal';
 
@@ -61,8 +61,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
                 )}
                 <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(true); }} className="absolute bottom-0 right-0 bg-slate-800 text-white p-2 rounded-full border-2 border-white z-20"><Edit2 size={14} /></button>
             </div>
-            <p className="mt-4 font-black text-xl tracking-tight uppercase text-mint-900">{user.level}</p>
-            <p className="text-xs font-bold opacity-40 uppercase tracking-widest">{user.reportCount} Reports Shared</p>
+            
+            <p className="mt-5 font-black text-xl tracking-tight uppercase text-mint-700">{user.level}</p>
+            
+            <div className="mt-2 bg-white/50 px-4 py-1.5 rounded-full border border-mint-200/50 shadow-sm flex items-center gap-2">
+                <FileText size={12} className="text-mint-400" />
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{user.reportCount} Reports Shared</p>
+            </div>
         </div>
 
         {/* Badges Gallery */}
