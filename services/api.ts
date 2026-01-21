@@ -733,8 +733,9 @@ export const fetchHazards = async (lat: number, lng: number): Promise<Hazard[]> 
 
 export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazard[]> => {
     try {
-        // Attempt to fetch from local Python backend
-        const response = await fetch(`http://localhost:8000/ai/scan?lat=${lat}&lng=${lng}`);
+        // Attempt to fetch from local Python backend or Vercel API
+        // Using relative path handles both proxy (dev) and direct (prod)
+        const response = await fetch(`/ai/scan?lat=${lat}&lng=${lng}`);
         if (response.ok) {
             const data = await response.json();
             return data;
