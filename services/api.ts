@@ -376,6 +376,19 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
         if (!parsed.avatarUrl) {
             parsed.avatarUrl = getAvatarUrl(parsed.presetId || parsed.name || 'Guest');
         }
+        
+        // --- SYNC FIX ---
+        // Ensure reportCount matches the actual mock reports count
+        const actualCount = MOCK_REPORTS.length;
+        if (parsed.reportCount !== actualCount) {
+            parsed.reportCount = actualCount;
+            // Persist the correction
+            if (userId !== 'guest_user') {
+                localStorage.setItem(`satarkx_profile_${userId}`, JSON.stringify(parsed));
+            }
+        }
+        // ----------------
+
         return parsed;
     }
     const levelInfo = calculateLevelInfo(0);

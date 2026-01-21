@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Mail, Smartphone, Moon, Sun, Map as MapIcon, Globe, Save, Loader2, Edit2, Camera, Image as ImageIcon, Check, Dices, Sparkles, Trophy, Car, FileText } from 'lucide-react';
@@ -20,6 +19,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
   const [customAvatarUrl, setCustomAvatarUrl] = useState<string | undefined>(user.avatarType === 'upload' ? user.avatarUrl : undefined);
   const [isSaving, setIsSaving] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getDiceBearUrl = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
@@ -37,6 +37,19 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
     } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
+  const handleImageSelect = (fileOrBlob: Blob) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          if (e.target?.result) {
+              setCustomAvatarUrl(e.target.result as string);
+              setAvatarType('upload');
+              setShowAvatarMenu(false);
+              setShowCamera(false);
+          }
+      };
+      reader.readAsDataURL(fileOrBlob);
+  };
+
   const latestBadgeId = user.badges && user.badges.length > 0 ? user.badges[user.badges.length - 1] : null;
   const latestBadge = latestBadgeId ? BADGES.find(b => b.id === latestBadgeId) : null;
 
@@ -46,6 +59,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
         <h2 className="text-2xl font-black flex items-center gap-2">
             <User className="text-mint-600" /> My Profile
         </h2>
+
+        {/* Hidden File Input for Gallery Selection */}
+        <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*" 
+            onChange={(e) => {
+                const file = e.target.files?.[0];
+                if(file) handleImageSelect(file);
+            }}
+        />
 
         {/* Avatar Section */}
         <div className="flex flex-col items-center mt-4 mb-2">
@@ -64,9 +89,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
             
             <p className="mt-5 font-black text-xl tracking-tight uppercase text-mint-700">{user.level}</p>
             
-            <div className="mt-2 bg-white/50 px-4 py-1.5 rounded-full border border-mint-200/50 shadow-sm flex items-center gap-2">
-                <FileText size={12} className="text-mint-400" />
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{user.reportCount} Reports Shared</p>
+            <div className="mt-2 bg-mint-50 px-4 py-1.5 rounded-full border border-mint-200 shadow-sm flex items-center gap-2">
+                <FileText size={12} className="text-mint-600" strokeWidth={2.5} />
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{user.reportCount} Reports Shared</p>
             </div>
         </div>
 
@@ -142,7 +167,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
                         <button onClick={() => setPresetId(Math.random().toString(36).substring(7))}><Dices size={14} className="text-mint-500 ml-2" /></button>
                     </div>
                 </div>
-                {/* Note: Gender specific generation is not strictly needed for this style but kept in state if we switch providers later */}
             </div>
             <p className="text-[9px] font-bold text-slate-400 italic">Avatar dynamically generated based on your Preset ID.</p>
         </div>
@@ -154,21 +178,36 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onUpdate }) => {
         {showAvatarMenu && (
           <AvatarMenu 
             onClose={() => setShowAvatarMenu(false)} 
-            onSelect={(url) => { setCustomAvatarUrl(url); setAvatarType('upload'); setShowAvatarMenu(false); }} 
+            onCamera={() => {
+                setShowAvatarMenu(false);
+                setShowCamera(true);
+            }}
+            onGallery={() => {
+                fileInputRef.current?.click();
+            }} 
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCamera && (
+            <CameraModal 
+                onClose={() => setShowCamera(false)} 
+                onCapture={(blob) => handleImageSelect(blob)} 
+            />
         )}
       </AnimatePresence>
     </div>
   );
 };
 
-const AvatarMenu = ({ onClose, onSelect }: { onClose: () => void, onSelect: (url: string) => void }) => (
+const AvatarMenu = ({ onClose, onCamera, onGallery }: { onClose: () => void, onCamera: () => void, onGallery: () => void }) => (
     <>
         <div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" onClick={onClose} />
         <motion.div initial={{ y: 200 }} animate={{ y: 0 }} exit={{ y: 200 }} className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[32px] p-8 z-50 flex flex-col gap-4 shadow-2xl">
             <h3 className="font-black text-xl text-slate-800">Change Guardian Avatar</h3>
-            <button className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><Camera className="group-hover:text-mint-600" /> Use Camera</button>
-            <button className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><ImageIcon className="group-hover:text-mint-600" /> From Gallery</button>
+            <button onClick={onCamera} className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><Camera className="group-hover:text-mint-600" /> Use Camera</button>
+            <button onClick={onGallery} className="flex items-center gap-4 p-4 bg-mint-50 rounded-2xl border border-mint-100 font-bold text-mint-900 group active:scale-95 transition-all"><ImageIcon className="group-hover:text-mint-600" /> From Gallery</button>
             <button onClick={onClose} className="mt-2 py-3 font-black text-slate-400 text-sm">Cancel</button>
         </motion.div>
     </>
