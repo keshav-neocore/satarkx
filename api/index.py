@@ -1,1 +1,1 @@
-# Removed
+# Removed to allow pure frontend deployment
