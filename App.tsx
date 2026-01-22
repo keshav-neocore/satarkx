@@ -14,7 +14,12 @@ const App: React.FC = () => {
 
   // Animation Sequence Logic
   useEffect(() => {
-    // Check for existing session (optional, skipping for demo flow)
+    // Auto-login: Check for existing session
+    const storedUserId = localStorage.getItem('satarkx_user_id');
+    if (storedUserId && storedUserId !== 'guest_user') {
+       setIsLoggedIn(true);
+    }
+
     const timer1 = setTimeout(() => {
       setSplashPhase('shield');
     }, 2000);

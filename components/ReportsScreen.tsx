@@ -1,26 +1,40 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { FileText, MapPin, Clock, CheckCircle, Play, Loader2 } from 'lucide-react';
-import { fetchUserReports, Report } from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, MapPin, Clock, CheckCircle, Play, Loader2, Trash2 } from 'lucide-react';
+import { fetchUserReports, deleteUserReport, Report } from '../services/api';
 
 const ReportsScreen: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadReports = async () => {
-      setIsLoading(true);
-      try {
-        const data = await fetchUserReports();
-        setReports(data);
-      } catch (error) {
-        console.error("Failed to load reports:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     loadReports();
   }, []);
+
+  const loadReports = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchUserReports();
+      setReports(data);
+    } catch (error) {
+      console.error("Failed to load reports:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+      if(window.confirm("Are you sure you want to delete this report? This action cannot be undone.")) {
+          try {
+              const success = await deleteUserReport(id);
+              if (success) {
+                  setReports(prev => prev.filter(r => r.id !== id));
+              }
+          } catch (e) {
+              console.error("Failed to delete", e);
+          }
+      }
+  };
 
   return (
     <div className="h-full overflow-y-auto pb-32 px-4 pt-6">
@@ -50,14 +64,25 @@ const ReportsScreen: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-4">
+              <AnimatePresence>
               {reports.map((report, index) => (
                 <motion.div
                   key={report.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: index * 0.05 }}
-                  className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex gap-4"
+                  className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex gap-4 relative group"
                 >
+                  {/* Delete Button */}
+                  <button 
+                    onClick={() => handleDelete(report.id)}
+                    className="absolute top-3 right-3 text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors z-10"
+                    title="Delete Report"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+
                   <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                      {report.type === 'video' ? (
                         <>
@@ -73,7 +98,7 @@ const ReportsScreen: React.FC = () => {
                      )}
                   </div>
                   
-                  <div className="flex-1 flex flex-col justify-center">
+                  <div className="flex-1 flex flex-col justify-center pr-8">
                      <div className="flex justify-between items-start mb-1">
                          <div className="flex items-center gap-1.5">
                              {report.status === 'Verified' ? (
@@ -104,6 +129,7 @@ const ReportsScreen: React.FC = () => {
                   </div>
                 </motion.div>
               ))}
+              </AnimatePresence>
             </div>
           )}
       </div>

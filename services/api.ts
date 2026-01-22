@@ -187,7 +187,16 @@ export const signUpUser = async (email: string, password: string, username: stri
 export const loginUser = async (email: string, password: string): Promise<LoginResponse> => {
     const mockId = btoa(email);
     const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
-    if (!existingUserStr) throw new Error("User not found.");
+    
+    if (!existingUserStr) {
+        throw new Error("Account not found. Please Sign Up first.");
+    }
+
+    const storedPass = localStorage.getItem(`satarkx_pass_${mockId}`);
+    if (storedPass !== password) {
+        throw new Error("Invalid password.");
+    }
+
     const user = JSON.parse(existingUserStr);
     localStorage.setItem('satarkx_user_id', mockId);
     return { id: mockId, username: user.name, email: user.email };
@@ -195,6 +204,9 @@ export const loginUser = async (email: string, password: string): Promise<LoginR
 
 export const resetUserPassword = async (email: string, newPassword: string): Promise<boolean> => {
     const mockId = btoa(email);
+    const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
+    if (!existingUserStr) throw new Error("Account not found.");
+    
     localStorage.setItem(`satarkx_pass_${mockId}`, newPassword);
     return true;
 };
@@ -260,6 +272,18 @@ export const submitReport = async (mediaBlob: Blob, lat: number, lng: number, me
 };
 
 export const fetchUserReports = async (): Promise<Report[]> => MOCK_REPORTS;
+
+export const deleteUserReport = async (reportId: string): Promise<boolean> => {
+    const initialLength = MOCK_REPORTS.length;
+    MOCK_REPORTS = MOCK_REPORTS.filter(r => r.id !== reportId);
+    
+    if (MOCK_REPORTS.length !== initialLength) {
+        localStorage.setItem('satarkx_mock_reports', JSON.stringify(MOCK_REPORTS));
+        return true;
+    }
+    return false;
+};
+
 export const fetchUserRewards = async (): Promise<Reward[]> => MOCK_REWARDS;
 
 export const claimReward = async (rewardId: string): Promise<Reward> => {
@@ -285,7 +309,7 @@ export const fetchLeaderboard = async (): Promise<any> => {
     return { top3, nearby };
 };
 
-// --- CORE AI LOGIC (PORTED FROM PYTHON) ---
+// --- CORE AI LOGIC ---
 
 export const fetchAIDetections = async (lat: number, lng: number): Promise<Hazard[]> => {
     // Artificial delay for "Neural Scan" feel
