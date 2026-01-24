@@ -17,7 +17,15 @@ const HomeScreen: React.FC = () => {
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [activeTab, setActiveTab] = useState('Map');
   const [showCamera, setShowCamera] = useState(false);
+  
+  // Track map center separate from user GPS
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userGPS, setUserGPS] = useState<{ lat: number; lng: number } | null>(null);
+  
+  // Destination & Route State
+  const [destination, setDestination] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [routeStats, setRouteStats] = useState<{ time: string; dist: string } | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAIScanning, setIsAIScanning] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'success' | 'error' | null>(null);
@@ -41,12 +49,15 @@ const HomeScreen: React.FC = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          setCurrentLocation({ lat: latitude, lng: longitude });
+          const loc = { lat: latitude, lng: longitude };
+          setCurrentLocation(loc);
+          setUserGPS(loc);
           refreshHazards(latitude, longitude);
         },
         () => {
           const fallback = { lat: 28.6139, lng: 77.2090 };
           setCurrentLocation(fallback);
+          setUserGPS(fallback); // Use fallback as GPS if denied, to enable "Back to Start" behavior
           refreshHazards(fallback.lat, fallback.lng);
         }
       );
@@ -93,6 +104,49 @@ const HomeScreen: React.FC = () => {
             notifiedHazardsRef.current.add(String(hazard.id));
         }
     });
+  };
+
+  const calculateRoute = (start: {lat: number, lng: number}, end: {lat: number, lng: number}) => {
+      // Haversine formula approximation for distance
+      const R = 6371; // km
+      const dLat = (end.lat - start.lat) * Math.PI / 180;
+      const dLon = (end.lng - start.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(start.lat * Math.PI / 180) * Math.cos(end.lat * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const dist = R * c;
+      
+      // Mock time: assume average speed 30km/h in city
+      const timeHours = dist / 30;
+      const timeMins = Math.round(timeHours * 60);
+      
+      setRouteStats({
+          dist: dist.toFixed(1) + ' km',
+          time: timeMins > 60 ? `${Math.floor(timeMins/60)}h ${timeMins%60}m` : `${timeMins} min`
+      });
+  };
+
+  const handleLocationSelect = (lat: number, lng: number, name?: string) => {
+    // When searching, we don't teleport user, we set destination
+    if (userGPS) {
+        setDestination({ lat, lng, name: name || 'Selected Location' });
+        calculateRoute(userGPS, { lat, lng });
+        // We do NOT update currentLocation immediately, MapComponent handles the view fitting
+    } else {
+        // If no GPS, just jump there
+        setCurrentLocation({ lat, lng });
+    }
+    refreshHazards(lat, lng); // Load hazards for destination
+  };
+
+  const handleRecenter = () => {
+    setDestination(null);
+    setRouteStats(null);
+    if (userGPS) {
+      setCurrentLocation(userGPS);
+      refreshHazards(userGPS.lat, userGPS.lng);
+    }
   };
 
   const loadData = async () => {
@@ -191,7 +245,11 @@ const HomeScreen: React.FC = () => {
                     longitude={currentLocation.lng} 
                     hazards={hazards} 
                     mapStyle={viewMapStyle}
-                    onMapStyleChange={setViewMapStyle} 
+                    destination={destination}
+                    routeStats={routeStats}
+                    onMapStyleChange={setViewMapStyle}
+                    onLocationSelect={handleLocationSelect}
+                    onRecenter={handleRecenter}
                 />
             </div>
         )}

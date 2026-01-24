@@ -160,12 +160,13 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
 
 export const signUpUser = async (email: string, password: string, username: string): Promise<SignUpResponse> => {
     if (password.length < 6) throw new Error("Password should be at least 6 characters.");
-    const mockId = btoa(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const mockId = btoa(normalizedEmail);
     const levelInfo = calculateLevelInfo(0);
     const mockUser: UserProfile = {
         id: mockId,
         name: username,
-        email: email,
+        email: normalizedEmail,
         level: levelInfo.title,
         levelNumber: levelInfo.levelNumber,
         currentPoints: 0,
@@ -181,11 +182,12 @@ export const signUpUser = async (email: string, password: string, username: stri
     localStorage.setItem(`satarkx_profile_${mockId}`, JSON.stringify(mockUser));
     localStorage.setItem(`satarkx_pass_${mockId}`, password);
     localStorage.setItem('satarkx_user_id', mockId);
-    return { user: { id: mockId, username, email } };
+    return { user: { id: mockId, username, email: normalizedEmail } };
 };
 
 export const loginUser = async (email: string, password: string): Promise<LoginResponse> => {
-    const mockId = btoa(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const mockId = btoa(normalizedEmail);
     const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
     
     if (!existingUserStr) {
@@ -203,7 +205,8 @@ export const loginUser = async (email: string, password: string): Promise<LoginR
 };
 
 export const resetUserPassword = async (email: string, newPassword: string): Promise<boolean> => {
-    const mockId = btoa(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const mockId = btoa(normalizedEmail);
     const existingUserStr = localStorage.getItem(`satarkx_profile_${mockId}`);
     if (!existingUserStr) throw new Error("Account not found.");
     
